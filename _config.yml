@@ -1,0 +1,15 @@
+﻿safe: true
+lsi: false
+pygments: true
+markdown: redcarpet
+auto: true
+title: "松的博客"
+public_url: "http://youngpine.github.com"
+keywords: "android,xml,html,JavaScript,css,Github"
+owner:
+  name: "陈古松"
+  mail: "1036720429@qq.com"
+disqus:
+  short_name: "youngpine"
+paginate: 10
+exclude: [start-jekyll.bat, Github.sln, Github.v11.suo]

@@ -1,0 +1,15 @@
+---
+title: 博友
+layout: default
+---
+
+ <div id="list">
+      {% for cat in site.categories %}
+      <h2 id="{{ cat[0] }}-ref">{{ cat[0] }}</h2>
+      <ul class="linkBgChange">
+	    {% for post in cat[1] %}
+		<a href="{{ post.url }}"><li>{{ post.title }}</li></a>
+	    {% endfor %}
+      </ul>
+    {% endfor %}
+ </div>

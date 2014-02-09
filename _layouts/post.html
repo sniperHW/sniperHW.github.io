@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>{{ page.title }}- {{ site.title }}</title>
+    {% include meta-link.md %}
+    {% if page.keywords %}<meta name="keywords" content="{{ page.keywords }}">{% endif %}
+	{% if page.description %}<meta name="description" content="{{ page.description }}">{% endif %}
+</head>
+<body>
+   <div id="page">
+      {% include header.md %}
+      <div id="content">
+          <!--left begin-->
+          <div id="left">
+            {% include information.md%}
+            {% include tags.md%}
+          </div>
+          <!--left end-->
+          <!--main begin-->
+          <div id="main">
+            <div id="list">
+              <h3>{{ page.title }}</h3>
+				{{ content }}
+               <div id="disqus_thread">
+               </div>
+<script type="text/javascript">
+/* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+var disqus_shortname = '{{ site.disqus.short_name }}'; // required: replace example with your forum shortname
+
+/* * * DON'T EDIT BELOW THIS LINE * * */
+(function() {
+	var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+	dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+	(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+})();
+</script>
+           
+				<ol class="pager">
+					{% if page.previous %}
+					<li class="previous"><a href="{{ page.previous.url }}">上一篇：{{ page.previous.title }}</a></li>
+					{% else %}
+					<li class="previous disabled">
+					<a href="#">上一篇：没有了</a>
+					</li>
+					{% endif %}
+					{% if page.next %}
+					<li class="next">
+					<a href="{{ page.next.url }}">下一篇：{{ page.next.title }}</a>
+					</li>
+					{% else %}
+					<li class="next disabled">
+					<a href="#">下一篇：没有了</a>
+					</li>
+					{% endif %}
+				</ol>
+               </div>
+            {% include footer.md%}
+          </div>
+          <!--main end-->
+          <!--right begin-->
+          <div id="right">
+            {% include word.md%}
+            {% include friends.md%}
+          </div>
+          <!--right end-->
+      </div>
+</body>
+</html>
