@@ -3,13 +3,13 @@ lsi: false
 pygments: true
 markdown: redcarpet
 auto: true
-title: "松的博客"
-public_url: "http://youngpine.github.com"
+title: "sniperHW的博客"
+public_url: "http://sniperHW.github.com"
 keywords: "android,xml,html,JavaScript,css,Github"
 owner:
-  name: "陈古松"
-  mail: "1036720429@qq.com"
+  name: "黄蔚"
+  mail: "huangweilook@21cn.com"
 disqus:
-  short_name: "youngpine"
+  short_name: "sniperHW"
 paginate: 10
 exclude: [start-jekyll.bat, Github.sln, Github.v11.suo]
