@@ -1,11 +1,11 @@
  <div id="information">
               <h2>学习方向</h2>
               <ul>
-              <li>PS学习</li>
-              <li>UI设计</li>
-              <li>网页设计</li>
-              <li>前端开发</li>
-              <li>UED设计</li>
-			  <li>JavaScript</li>
+              <li>网络游戏</li>
+              <li>分布式系统</li>
+              <li>C/C++</li>
+              <li>lua</li>
+              <li>scheme</li>
+	     <li>golang</li>
               </ul>
  </div>
