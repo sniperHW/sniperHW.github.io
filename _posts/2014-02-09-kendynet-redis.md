@@ -1,0 +1,139 @@
+---
+title: 使用kendynet构建异步redis访问服务
+description: 使用kendynet构建异步redis访问服务
+keywords: 网络游戏
+layout: post
+tags: [网络框架]
+---
+
+最近开始在kendynet上开发手游服务端，游戏类型是生存挑战类的，要存储的数据结构和类型都比较简单，于是选择了用redis做存储，数据类型使用string基本就足够了。于是在kendynet上写了一个简单的redis异步访问接口.
+
+###设计理念
+1.项目时间紧迫，不打算提供一个大而全的访问接口，只提供一个request接口用以发出redis请求.
+
+2.数据在redis中key和value都存储为string,由使用者负责将数据序列化成string,从string反序列化回数据.
+
+3.服务支持本地访问和远程访问，服务自动根据请求发起的位置将结果返回给请求者.
+
+4.数据库操作结果通过异步消息返回给调用者.
+
+###使用示例
+下面先看一个使用示例：
+
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include "core/msgdisp.h"
+	#include <stdint.h>
+	#include "testcommon.h"
+	#include "core/db/asyndb.h"
+
+
+	asyndb_t asydb;
+
+
+	int g = 0;
+	int count = 0;
+
+
+	void db_setcallback(struct db_result *result);
+
+	void db_getcallback(struct db_result *result)
+	{
+		//printf("%s\n",result->result_str);
+		count++;
+		char req[256];
+		snprintf(req,256,"set key%d %d",g,g);
+		if(0 != asydb->request(asydb,new_dbrequest(db_set,req,db_setcallback,result->ud,make_by_msgdisp((msgdisp_t)result->ud))))
+			printf("request error\n");
+	}
+
+	void db_setcallback(struct db_result *result)
+	{
+		if(result->ud == NULL) printf("error\n");
+		char req[256];
+		snprintf(req,256,"get key%d",g);
+		g = (g+1)%102400;
+		asydb->request(asydb,new_dbrequest(db_get,req,db_getcallback,result->ud,make_by_msgdisp((msgdisp_t)result->ud)));
+	}
+
+
+	int32_t asynprocesspacket(msgdisp_t disp,msgsender sender,rpacket_t rpk)
+	{
+		uint16_t cmd = rpk_read_uint16(rpk);
+		if(cmd == CMD_DB_RESULT)
+		{
+			struct db_result *result = rpk_read_dbresult(rpk);
+			result->callback(result);
+			free_dbresult(result);	
+		}
+		return 1;
+	}
+
+
+	static void *service_main(void *ud){
+		msgdisp_t disp = (msgdisp_t)ud;
+		while(!stop){
+			msg_loop(disp,50);
+		}
+		return NULL;
+	}
+
+
+
+
+	int main(int argc,char **argv)
+	{
+		setup_signal_handler();
+		msgdisp_t disp1 = new_msgdisp(NULL,
+									  NULL,
+									  NULL,
+									  NULL,
+									  asynprocesspacket,
+									  NULL);
+
+		thread_t service1 = create_thread(THREAD_JOINABLE);
+
+		msgdisp_t disp2 = new_msgdisp(NULL,
+									  NULL,
+									  NULL,
+									  NULL,
+									  asynprocesspacket,
+									  NULL);
+
+		thread_t service2 = create_thread(THREAD_JOINABLE);    
+		asydb = new_asyndb();
+		asydb->connectdb(asydb,"127.0.0.1",6379);
+		asydb->connectdb(asydb,"127.0.0.1",6379);
+		//发出第一个请求uu
+		char req[256];
+		snprintf(req,256,"set key%d %d",g,g);
+		
+		asydb->request(asydb,new_dbrequest(db_set,req,db_setcallback,disp1,make_by_msgdisp(disp1)));
+		thread_start_run(service1,service_main,(void*)disp1);
+
+		asydb->request(asydb,new_dbrequest(db_set,req,db_setcallback,disp2,make_by_msgdisp(disp2)));
+		thread_start_run(service2,service_main,(void*)disp2);    
+		
+		uint32_t tick,now;
+		tick = now = GetSystemMs();
+		while(!stop){
+			sleepms(100);
+			now = GetSystemMs();
+			if(now - tick > 1000)
+			{
+				printf("count:%d\n",count);
+				tick = now;
+				count = 0;
+			}
+		}
+		thread_join(service1);
+		thread_join(service2);
+		return 0;
+	}
+
+上面的示例程序创建了一个redis异步处理器,然后建立了两个到同一个redis服务器的连接,在实现中，每个连接都会创建一个工作线程，用以完成数据库请求.这些工作线程会共享一个任务队列，使用者发出的请求被投递到任务队列中，由工作线程提取并执行.
+
+之后创建两个消息分离器和两个线程，然后发起两个set请求和启动消息分离器线程.
+
+当set返回后，由消息分离器回调db_setcallback，在db_setcallback中继续发起一个get请求,
+在get的回调db_getcallback继续发起新的set请求，如此反复.
