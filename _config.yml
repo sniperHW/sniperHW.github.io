@@ -4,12 +4,12 @@ pygments: true
 markdown: redcarpet
 auto: true
 title: "sniperHW的博客"
-public_url: "http://sniperhw.github.io"
+public_url: "http://sniperHW.github.com"
 keywords: "android,xml,html,JavaScript,css,Github"
 owner:
   name: "黄蔚"
   mail: "huangweilook@21cn.com"
 disqus:
-  short_name: "sniperhw"
+  short_name: "sniperHW"
 paginate: 10
 exclude: [start-jekyll.bat, Github.sln, Github.v11.suo]
