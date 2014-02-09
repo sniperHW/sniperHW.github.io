@@ -37,12 +37,11 @@ tags: [教程]
   5、接下来基本就是网页的基本制作了。
 ####四、内容格式####
   1、post里面的文章的规格：首先要有模板引用和tag以及categories说明。其格式是：
-   <pre class="code">
-   title：Hello,world!
-   layout:post
-   tags:[教程]
-   categories: [作品]
-   </pre>
+
+   	title：Hello,world!
+   	layout:post
+   	tags:[教程]
+   	categories: [作品]
    
   2、每个文件中{***}中的内容属于引用模块，如果掌握了将网页划分为不同的区域，你就可以实现很多文件的重复利用。
 ####五、参考教程####
