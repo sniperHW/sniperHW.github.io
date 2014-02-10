@@ -19,6 +19,7 @@ tags: [网络框架]
 
 ###使用示例
 下面先看一个使用示例：
+
 	#include <stdio.h>
 	#include <stdlib.h>
 	#include "core/msgdisp.h"
@@ -121,10 +122,12 @@ tags: [网络框架]
 		char req[256];
 		snprintf(req,256,"set key%d %d",g,g);
 		
-		asydb->request(asydb,new_dbrequest(db_set,req,db_setcallback,disp1,make_by_msgdisp(disp1)));
+		asydb->request(asydb,
+			      new_dbrequest(db_set,req,db_setcallback,disp1,make_by_msgdisp(disp1)));
 		thread_start_run(service1,service_main,(void*)disp1);
 
-		asydb->request(asydb,new_dbrequest(db_set,req,db_setcallback,disp2,make_by_msgdisp(disp2)));
+		asydb->request(asydb,
+			      new_dbrequest(db_set,req,db_setcallback,disp2,make_by_msgdisp(disp2)));
 		thread_start_run(service2,service_main,(void*)disp2);    
 		
 		uint32_t tick,now;
