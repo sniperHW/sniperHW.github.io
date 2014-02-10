@@ -19,7 +19,7 @@ tags: [网络框架]
 
 ###使用示例
 下面先看一个使用示例：
-
+```c
 	#include <stdio.h>
 	#include <stdlib.h>
 	#include "core/msgdisp.h"
@@ -43,7 +43,14 @@ tags: [网络框架]
 		count++;
 		char req[256];
 		snprintf(req,256,"set key%d %d",g,g);
-		if(0 != asydb->request(asydb,new_dbrequest(db_set,req,db_setcallback,result->ud,make_by_msgdisp((msgdisp_t)result->ud))))
+		if(0 != asydb->request(asydb,
+				     new_dbrequest(db_set,
+						 req,
+						 db_setcallback,
+						 result->ud,
+						 make_by_msgdisp((msgdisp_t)result->ud))
+						)
+				     )
 			printf("request error\n");
 	}
 
@@ -53,7 +60,14 @@ tags: [网络框架]
 		char req[256];
 		snprintf(req,256,"get key%d",g);
 		g = (g+1)%102400;
-		asydb->request(asydb,new_dbrequest(db_get,req,db_getcallback,result->ud,make_by_msgdisp((msgdisp_t)result->ud)));
+		asydb->request(asydb,
+			      new_dbrequest(db_get,
+					  req,
+					  db_getcallback,
+					  result->ud,
+					  make_by_msgdisp((msgdisp_t)result->ud)
+					  )
+			      );
 	}
 
 
@@ -85,20 +99,20 @@ tags: [网络框架]
 	{
 		setup_signal_handler();
 		msgdisp_t disp1 = new_msgdisp(NULL,
-									  NULL,
-									  NULL,
-									  NULL,
-									  asynprocesspacket,
-									  NULL);
+					   NULL,
+					   NULL,
+				            NULL,
+					   asynprocesspacket,
+					   NULL);
 
 		thread_t service1 = create_thread(THREAD_JOINABLE);
 
 		msgdisp_t disp2 = new_msgdisp(NULL,
-									  NULL,
-									  NULL,
-									  NULL,
-									  asynprocesspacket,
-									  NULL);
+					   NULL,
+					   NULL,
+					   NULL,
+				            asynprocesspacket,
+					   NULL);
 
 		thread_t service2 = create_thread(THREAD_JOINABLE);    
 		asydb = new_asyndb();
@@ -130,7 +144,7 @@ tags: [网络框架]
 		thread_join(service2);
 		return 0;
 	}
-
+```
 上面的示例程序创建了一个redis异步处理器,然后建立了两个到同一个redis服务器的连接,在实现中，每个连接都会创建一个工作线程，用以完成数据库请求.这些工作线程会共享一个任务队列，使用者发出的请求被投递到任务队列中，由工作线程提取并执行.
 
 之后创建两个消息分离器和两个线程，然后发起两个set请求和启动消息分离器线程.
