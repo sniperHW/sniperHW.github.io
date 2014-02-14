@@ -1,0 +1,232 @@
+/* This is for your Custom Content. */
+
+body {
+  @include font;
+}
+
+h1, h2, h3, h4, h5, h6 ,b, strong {
+  @include text-shadow(255, 2px, 170);
+  small {
+    @include text-shadow;
+  }
+}
+
+h5, h6, strong {
+  @include text-shadow;
+}
+
+a {
+  @include transition;
+  color: rgb(0, 136, 204);
+  &:hover, &:focus {
+    color: rgb(0, 85, 128);
+    text-decoration: none;
+    @include text-shadow(255, 1px, 170);
+    @include transition;
+  }
+}
+
+.navbar .brand, .navbar .nav > li > a {
+  @include transition;
+  @include text-shadow(255, 0px, 170);
+  &:hover, &:focus {
+    color: rgb(51, 51, 51);
+    @include text-shadow(255, 1px, 170);
+    @include transition;
+  }
+}
+
+.nav > li > form {
+  position: relative;
+  display: block;
+  padding: 10px 15px;
+}
+
+.container > .navbar-header, .container > .navbar-collapse {
+  margin-right: 0px;
+  margin-left: 0px;
+}
+
+.page-header {
+    border-bottom: 1px dashed rgb(238, 238, 238);
+}
+
+.tag_box a span {
+  vertical-align: super;
+  font-size: 0.8em;
+}
+
+.row .visible-lg {
+  margin-top:40px;
+}
+
+.col-md-9 {
+  .wrapper {
+    @include transition;
+    @include border(0.067);
+    @include border-radius(10px);
+    @include box-shadow(1px, 2px, 4px, 0.067);
+    padding: 5px;
+    margin: 5px 0px;
+    .entry-title {
+      border-bottom: 1px dashed rgba(0, 0, 0, 0.067);
+    }
+    &:hover {
+      @include transition;
+      @include background-color;
+      @include border(0.167);
+      @include box-shadow(2px, 3px, 4px, 0.167);
+    }
+    p img {
+      @include img;
+    }
+    .status {
+      border-top: 1px dashed rgba(0, 0, 0, 0.067);
+      padding-top: 10px;
+      color: rgb(119, 119, 119);
+      .date {
+        padding: 4px 0 0;
+        vertical-align: middle;
+        a {
+          color: rgb(119, 119, 119);
+          &:hover, &:focus {
+            color: rgb(51, 51, 51);
+          }
+        }
+      }
+      .visible-lg {
+        margin-top: 0px;
+      }
+    }
+  }
+  .status {
+    .visible-lg {
+      margin-top: 0px;
+    }
+  }
+  p {
+    img {
+      @include img;
+    }
+    code {
+      font-family: Monaco, "Bitstream Vera Sans Mono", "Lucida Console", Terminal, monospace;
+      @include box-shadow(1px, 1px, 1px, 0.067);
+      @include border(0.067);
+    }
+  }
+  .highlight pre {
+    @include transition;
+    @include background-color;
+    &:hover {
+      @include transition;
+      @include background-color(0.9);
+      @include border(0.35);
+      @include box-shadow(1px, 2px, 2px, 0.167);
+    }
+  }
+}
+
+section {
+  @include transition;
+  @include border(0.067);
+  @include border-radius(5px);
+  @include box-shadow(1px, 2px, 3px, 0.067);
+  padding: 0px 5px;
+  margin: 5px 0px;
+  h4 {
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.067);
+  }
+  &:hover {
+    @include transition;
+    @include background-color;
+    @include border(0.167);
+    @include box-shadow(1px, 3px, 4px, 0.167);
+  }
+}
+
+blockquote {
+  p {
+    font-style: oblique;
+  }
+}
+
+table {
+  margin-bottom: 20px;
+  max-width: 100%;
+  border-collapse: collapse;
+  @include transition;
+  @include border(0.167);
+  &:hover {
+    @include transition;
+    @include border(0.35);
+    @include box-shadow(1px, 2px, 2px, 0.167);
+  }
+  thead tr th {
+    @include border(0.167);
+    border-top: 0px none;
+    border-bottom-width: 2px;
+    vertical-align: bottom;
+    padding: 8px;
+  }
+  tbody tr td {
+    @include border(0.167);
+    vertical-align: top;
+    padding: 8px;
+  }
+  thead > tr {
+    @include background-color(0.9);
+  }
+  tbody > tr:nth-child(2n+1) {
+    @include background-color;
+  }
+  tbody tr {
+    &:hover {
+      @include background-color(0.9);
+      @include transition;
+    }
+  }
+}
+
+footer {
+  margin: 20px 0px;
+  p {
+    line-height: 100%;
+    color: rgb(119, 119, 119);
+    a {
+      color: rgb(119, 119, 119);
+      &:hover, &:focus {
+        color: rgb(51, 51, 51);
+      }
+    }
+  }
+}
+
+#search-loader {
+ display:none;
+ text-align:center
+}
+
+#back-top {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  a {
+    width: 54px;
+    height: 54px;
+    display: block;
+    background: #ddd url(../images/bg_up_arrow.png) no-repeat center center;
+    background-color: #aaa;
+    @include border-radius(7px);
+    @include transition(1s);
+    &:hover {
+    background-color: #777;
+    }
+  }
+}
+
+/* baidu share style fixed */
+.bds_more {
+    box-sizing: content-box;
+    -moz-box-sizing:content-box;
+    -webkit-box-sizing:content-box;
+}
