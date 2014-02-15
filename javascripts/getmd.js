@@ -25,12 +25,13 @@ function main(){
 		commentscount[Number(disqusCounts[i].id.substr(5))] = disqusCounts[i].innerText;
 	}*/
 	//content.innerHTML = '';
+	alert("here1")
 	loading.style.display = 'block';
 	if(path.split('/')[1] == 'search'){
 		search(path.split('/')[2]);
 	}
 	else if(path && path.split('/')[1] != 'page'){
-		alert("here")
+		alert("here2")
 		//disqus_url = hostbase + lowerCase(path);
 		//disqus_url = disqus_url.toLowerCase();
 		//showpost(path);
@@ -41,6 +42,8 @@ function main(){
         })();
 	}
 	else{
+		alert("here3")
+		
 		//backhome.style.display = 'none';
 		/*document.title = sitetitle;
 		if(postList){
