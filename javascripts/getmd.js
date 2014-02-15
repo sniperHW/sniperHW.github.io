@@ -26,7 +26,7 @@ function main(){
 	}*/
 	//content.innerHTML = '';
 	alert("here1")
-	loading.style.display = 'block';
+	//loading.style.display = 'block';
 	if(path.split('/')[1] == 'search'){
 		alert("here4")
 		search(path.split('/')[2]);
