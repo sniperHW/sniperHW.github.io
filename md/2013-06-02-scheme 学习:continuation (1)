@@ -70,7 +70,7 @@ search-element使用call/cc方式调用了一个匿名函数,这个匿名函数�
 	  
 我们先来看一下上面代码的输出
 
-> (define generate-digit (generate-one-element-at-a-time '(0 1 2)))
+	> (define generate-digit (generate-one-element-at-a-time '(0 1 2)))
 	> (generate-digit)
 	0
 	> (generate-digit)
