@@ -1,10 +1,3 @@
----
-title: 使用kendynet构建异步redis访问服务
-description: 使用kendynet构建异步redis访问服务
-keywords: 网络游戏
-layout: post
-tags: [网络框架]
----
 
 最近开始在kendynet上开发手游服务端，游戏类型是生存挑战类的，要存储的数据结构和类型都比较简单，于是选择了用redis做存储，数据类型使用string基本就足够了。于是在kendynet上写了一个简单的redis异步访问接口.
 
