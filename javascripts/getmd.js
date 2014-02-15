@@ -134,14 +134,14 @@ function chktakinglonger(){
 }
 
 function showpost(path){
-	var url = location.protocol + '//' + location.hostname + '/md/' + path.substr(1).replace(/\//g, '-');
+	/*var url = location.protocol + '//' + location.hostname + '/md/' + path.substr(1).replace(/\//g, '-');
 	document.title = decodeUtf8(path.substr(1).split('/')[path.substr(1).split('/').length-1].replace(/_/g, ' ')) + ' - '+sitetitle;
 	pdate = path.substr(1).split('/')[0]+'-'+path.substr(1).split('/')[1]+'-'+path.substr(1).split('/')[2];
-	loadXMLDoc(url);
+	loadXMLDoc(url);*/
 }
 
 function showlist(list){
-/*	if(path.split('/')[1] == 'page'){
+	if(path.split('/')[1] == 'page'){
 		page = Number(path.split('/')[2]);
 		if(isNaN(page) || page < 1){
 			page = 1;
@@ -178,7 +178,6 @@ function showlist(list){
         s.src = '//' + disqus_shortname + '.disqus.com/count.js';
         (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
     }());
-	*/
 }
 
 function encodePath(path){
