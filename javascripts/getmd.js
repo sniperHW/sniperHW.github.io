@@ -105,7 +105,20 @@ function loadXMLDoc(url){
 						encoded = true;
 					};
 					var converter = new Showdown.converter();
-					content.innerHTML = '<div style="padding: 20px 20px 20px 40px;"><div id="back_home"><a href="/" onclick="home();return false;">'+sitetitle+'</a><span>&nbsp;›&nbsp;</span></div><div id="post_title">' + decodeUtf8(path.substr(1).split('/')[path.substr(1).split('/').length-1].replace(/_/g, ' ')) + (encoded?Base64.decode('PHN1cCBzdHlsZT0iZm9udC1zaXplOjAuNWVtO3ZlcnRpY2FsLWFsaWduOiBzdXBlcjsiIHRpdGxlPSLmraTmlofnq6Dlt7Looqvph43mlrDnvJbnoIHku6XourLpgb/lrqHmn6UiPuKYmuiiq+e8lueggeeahOWGheWuuTwvc3VwPg=='):'') + '</div>' + converter.makeHtml(blog_text) + '<div class="date"><span>S</span>Posted at ' + pdate + '</div></div>';
+					
+					var html = converter.makeHtml(blog_text);
+					element.html(html);
+					var _ref = document.body.querySelectorAll('pre code');
+					for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+						var el = _ref[_i];
+						hljs.highlightBlock(el);
+					}
+					
+					content.innerHTML = '<div style="padding: 20px 20px 20px 40px;"><div id="back_home"><a href="/" onclick="home();return false;">'
+					                    +sitetitle+'</a><span>&nbsp;›&nbsp;</span></div><div id="post_title">' 
+										+decodeUtf8(path.substr(1).split('/')[path.substr(1).split('/').length-1].replace(/_/g, ' '))
+										+(encoded?Base64.decode('PHN1cCBzdHlsZT0iZm9udC1zaXplOjAuNWVtO3ZlcnRpY2FsLWFsaWduOiBzdXBlcjsiIHRpdGxlPSLmraTmlofnq6Dlt7Looqvph43mlrDnvJbnoIHku6XourLpgb/lrqHmn6UiPuKYmuiiq+e8lueggeeahOWGheWuuTwvc3VwPg=='):'')
+										+ '</div>' + html + '<div class="date"><span>S</span>Posted at ' + pdate + '</div></div>';
 					if(dis){
 						dis.style.display = 'block';
 					}
