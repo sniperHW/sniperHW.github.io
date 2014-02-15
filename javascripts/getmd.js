@@ -107,12 +107,12 @@ function loadXMLDoc(url){
 					var converter = new Showdown.converter();
 					
 					var html = converter.makeHtml(blog_text);
-					element.html(html);
+					/*element.html(html);
 					var _ref = document.body.querySelectorAll('pre code');
 					for (_i = 0, _len = _ref.length; _i < _len; _i++) {
 						var el = _ref[_i];
 						hljs.highlightBlock(el);
-					}
+					}*/
 					
 					content.innerHTML = '<div style="padding: 20px 20px 20px 40px;"><div id="back_home"><a href="/" onclick="home();return false;">'
 					                    +sitetitle+'</a><span>&nbsp;›&nbsp;</span></div><div id="post_title">' 
@@ -133,7 +133,6 @@ function loadXMLDoc(url){
 				}
 			}
 		}
-		alert(url);
 		xmlhttp.open("GET",url,true);
 		xmlhttp.send(null);
 	}
