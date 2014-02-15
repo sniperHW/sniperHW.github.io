@@ -117,11 +117,12 @@ function loadXMLDoc(url){
 										+(encoded?Base64.decode('PHN1cCBzdHlsZT0iZm9udC1zaXplOjAuNWVtO3ZlcnRpY2FsLWFsaWduOiBzdXBlcjsiIHRpdGxlPSLmraTmlofnq6Dlt7Looqvph43mlrDnvJbnoIHku6XourLpgb/lrqHmn6UiPuKYmuiiq+e8lueggeeahOWGheWuuTwvc3VwPg=='):'')
 										+ '</div>' + html + '<div class="date"><span>S</span>Posted at ' + pdate + '</div></div>';
 					
-					/*var _ref = content.innerHTML.querySelectorAll('pre code');
+					var _ref = content.innerHTML.querySelectorAll('pre code');
+					alert(_ref.length)
 					for (_i = 0, _len = _ref.length; _i < _len; _i++) {
 						var el = _ref[_i];
 						hljs.highlightBlock(el);
-					}*/
+					}
 					if(dis){
 						dis.style.display = 'block';
 					}
