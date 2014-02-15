@@ -9,7 +9,7 @@
 新框架的设计首先从网络层开始,我首先选择了在linux实现一个基于epoll的网络层.
 
 这里必须提一下的是，在很久以前我就尝试过linux下用epoll+线程池提供一个类似iocp的网络接口.
-这个链接是第二次尝试时用C++编写的版本[linux类IOCP接口](http://download.csdn.net/detail/sniperhuangwei/3726754).
+[linux类IOCP接口](http://download.csdn.net/detail/sniperhuangwei/3726754)是第二次尝试时用C++编写的版本.
 
 虽然前两次的尝试都不能令我满意，但毕竟让我增长了很多经验.[kqueue epoll 边界触发模式的网络编程模型](http://www.cnblogs.com/sniperHW/archive/2012/04/07/2436385.html)就是在总结之后写出来的,其中模式(1)(2)就是模仿iocp的,让我比较满意的[实现代码](https://github.com/sniperHW/epoll_mutilthread).
 
