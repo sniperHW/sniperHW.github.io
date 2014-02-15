@@ -25,16 +25,14 @@ function main(){
 		commentscount[Number(disqusCounts[i].id.substr(5))] = disqusCounts[i].innerText;
 	}*/
 	//content.innerHTML = '';
-	alert("here1")
 	//loading.style.display = 'block';
 	if(path.split('/')[1] == 'search'){
-		alert("here4")
 		search(path.split('/')[2]);
 	}
 	else if(path && path.split('/')[1] != 'page'){
-		alert("here2")
-		//disqus_url = hostbase + lowerCase(path);
-		//disqus_url = disqus_url.toLowerCase();
+		//alert("here2")
+		disqus_url = hostbase + lowerCase(path);
+		disqus_url = disqus_url.toLowerCase();
 		//showpost(path);
 		(function() {
             var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
@@ -42,9 +40,7 @@ function main(){
             (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
         })();
 	}
-	else{
-		alert("here3")
-		
+	else{		
 		//backhome.style.display = 'none';
 		/*document.title = sitetitle;
 		if(postList){
