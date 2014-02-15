@@ -127,7 +127,7 @@ postlist a:hover {
 
 .inner {
   position: relative;
-  width: 1240px;
+  width: 1140px;
   margin: 0 auto;
 }
 
@@ -141,7 +141,7 @@ postlist a:hover {
 }
 
 #main-content {
-  width: 940px;
+  width: 840px;
   min-height: 50px;
   float: left;
   position: relative;
