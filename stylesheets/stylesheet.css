@@ -272,11 +272,11 @@ aside a.button {
   margin-bottom: 20px;
   font-size: 21px;
 }
-/*
+
 code, pre {
   font-family: Monaco, "Bitstream Vera Sans Mono", "Lucida Console", Terminal, monospace;
   color: #222;
-  margin-bottom: 30px;
+  /*margin-bottom: 30px;*/
   font-size: 13px;
 }
 
@@ -298,7 +298,7 @@ pre code {
   background-color: #fff;
   border: none;
   padding: 0;
-}*/
+}
 
 ul, ol, dl {
   margin-bottom: 20px;
