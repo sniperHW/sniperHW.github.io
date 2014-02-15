@@ -113,6 +113,7 @@ function loadXMLDoc(url){
 						var el = _ref[_i];
 						hljs.highlightBlock(el);
 					}*/
+					hljs.highlightBlock(html);
 					alert(html)
 					content.innerHTML = '<div style="padding: 20px 20px 20px 40px;"><div id="back_home"><a href="/" onclick="home();return false;">'
 					                    +sitetitle+'</a><span>&nbsp;›&nbsp;</span></div><div id="post_title">' 
