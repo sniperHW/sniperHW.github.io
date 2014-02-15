@@ -68,6 +68,19 @@
           <div id="takinglonger"><blockquote>This is taking longer than normal, and there may be some problems in your network.</blockquote></div>
           <div id="disqus_thread" style="display:none"></div>
         </section>
+	  <div id="container" class="container-narrow">
+		<div ng-view></div>
+	  </div>	
+	  <script src="/javascripts/search.js"></script>
+	  <!-- Include javascript files -->
+	  <script src="/javascripts/showdown.js"></script>  
+	  <script type="text/javascript" src="javascripts/highlight.pack.js"></script>
+	  <script type="text/x-mathjax-config">
+		MathJax.Hub.Config({
+		  tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
+		});
+	  </script>
+	  <script type="text/javascript" src="javascripts/staticblog.js"></script>		
 
         <aside id="sidebar">
           <img src="/images/hooloo.png" />
@@ -81,21 +94,9 @@
         </aside>
       </div>
       <footer>Stay hungry, Stay foolish.</footer>
-    </div>
-  <div id="container" class="container-narrow">
-    <div ng-view></div>
-  </div>	
-  <script src="/javascripts/search.js"></script>
-  <!-- Include javascript files -->
-  <script src="/javascripts/showdown.js"></script>  
-  <script type="text/javascript" src="javascripts/highlight.pack.js"></script>
-  <script type="text/x-mathjax-config">
-    MathJax.Hub.Config({
-      tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
-    });
-  </script>	  
+    </div>    
   <!--<script src="/javascripts/getmd.js"></script>-->
-  <script type="text/javascript" src="javascripts/staticblog.js"></script>  
+
   <!--
   <script src="/javascripts/main.js"></script>
   -->
