@@ -1,0 +1,70 @@
+很简单的问题，最笨的算法，自己第一个用scheme写的稍微算长点的程序.
+
+废话不多说，直接上代码.
+
+	(begin
+	    (load "ex2.scm")
+	    (define (make-maze)
+	    (define (for-each proc things)
+	        (cond ((null? things) nil)
+	              (else    
+	                (let ((ret (proc (car things))))
+	                    (if (null? ret) (for-each proc (cdr things)) ret)))))
+	    ;迷宫
+	    (define maze  '((1 1 1 1 1 1 1 1 1)
+	                    (1 0 1 0 0 0 1 0 1)
+	                    (1 0 1 0 1 0 1 0 1)
+	                    (1 0 1 0 1 0 1 0 1)
+	                    (1 0 0 0 0 0 0 0 1)
+	                    (1 1 1 1 1 1 1 1 1)))
+	    (define direction '((0 -1)(0 1)(-1 0)(1 0))) ;上下左右
+	    (define (get-x-y array-2d x y)
+	        (list-ref (list-ref array-2d x) y))
+	    (define (is-close cur path);是否已经走过的路    
+	        (= 1 (accumulate 
+	                (lambda (pos sum) 
+	                (if (and (= (car pos) (car cur)) (= (cadr pos) (cadr cur))) (+ sum 1) sum)) 
+	             0 path)))
+	    ;检查是否合法路径
+	    (define (check cur dir path)
+	        (let ((x (+ (car dir) (car cur)))
+	              (y (+ (cadr dir) (cadr cur))))
+	         (cond ((is-close (list x y) path) nil)
+	               ((= (get-x-y maze x y) 1) nil);阻挡
+	               (else (list x y)))))   ;返回下一步合法的坐标    
+	
+	    ;返回一条路径
+	    (define (find-path-one start target)
+	        (define (iter cur-step path)
+	            (define (move dir)
+	                (let ((next (check cur-step (list-ref direction dir) path)))
+	                    (cond ((null? next) nil)
+	                          (else (iter next (cons cur-step path))))))                          
+	            (if (and (= (car target) (car cur-step))
+	                     (= (cadr target) (cadr cur-step))) (cons cur-step path)
+	                (for-each move (enumerate-interval 0 3)))     
+	        )
+	        (reverse (iter start nil))
+	    )
+	    ;返回所有路径
+	    (define (find-path-all start target)    
+	        (define (iter cur-step path)
+	            (define (move dir)
+	                (let ((next (check cur-step (list-ref direction dir) path)))
+	                    (cond ((null? next) nil)
+	                          (else (iter next (cons cur-step path))))))                          
+	            (cond ((and (= (car target) (car cur-step)) (= (cadr target) (cadr cur-step))) 
+	                (list (cons cur-step path))) ;到达目的地，返回路劲
+	                  (else
+	                      (accumulate (lambda (dir p) (append (move dir) p)) nil (enumerate-interval 0 3))))
+	        )
+	        (map reverse (iter start nil))
+	    )
+	    (lambda (op start target)
+	        (cond ((eq? op 'find-path-all) (find-path-all start target))
+	              ((eq? op 'find-path-one) (find-path-one start target))
+	              (else "bad op"))
+	    ))    
+	)
+	;(define maze make-maze)
+	;(maze 'find-path-one '(1 1) '(1 7))
