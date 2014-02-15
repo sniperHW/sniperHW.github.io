@@ -11,7 +11,7 @@
 这里必须提一下的是，在很久以前我就尝试过linux下用epoll+线程池提供一个类似iocp的网络接口.
 [linux类IOCP接口](http://download.csdn.net/detail/sniperhuangwei/3726754)是第二次尝试时用C++编写的版本.
 
-虽然前两次的尝试都不能令我满意，但毕竟让我增长了很多经验.[kqueue epoll 边界触发模式的网络编程模型](http://www.cnblogs.com/sniperHW/archive/2012/04/07/2436385.html)就是在总结之后写出来的,其中模式(1)(2)就是模仿iocp的,让我比较满意的[实现代码](https://github.com/sniperHW/epoll_mutilthread).
+虽然前两次的尝试都不能令我满意，但毕竟让我增长了很多经验.<a href="http://sniperhw.github.io/#!/2012/04/07/kqueue epoll 边界触发模式的网络编程模型">kqueue epoll 边界触发模式的网络编程模型</a>就是在总结之后写出来的,其中模式(1)(2)就是模仿iocp的,让我比较满意的[实现代码](https://github.com/sniperHW/epoll_mutilthread).
 
 最终,我选择了使用模式(3),也就是每线程一个event loop的方式来实现网络层.其中的原因是模式(1)(2)的现实相对来说比(3)更复杂，并且无法避免锁的使用.所以我选择了模式(3)来实现一个最基础的单线程接口，多线程网络留到上层去处理.而这个基础接口在linux和windows上是基本兼容的.最初的设计可以参看[kendylib](https://github.com/sniperHW/kendylib),其中的网络层同时支持windows和linux.
 
