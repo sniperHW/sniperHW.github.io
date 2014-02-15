@@ -141,7 +141,7 @@ function showpost(path){
 }
 
 function showlist(list){
-	if(path.split('/')[1] == 'page'){
+/*	if(path.split('/')[1] == 'page'){
 		page = Number(path.split('/')[2]);
 		if(isNaN(page) || page < 1){
 			page = 1;
@@ -178,6 +178,7 @@ function showlist(list){
         s.src = '//' + disqus_shortname + '.disqus.com/count.js';
         (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
     }());
+	*/
 }
 
 function encodePath(path){
