@@ -4,5 +4,10 @@
         "path": "2014-02-09-kendynet-redis",
         "tags": ["blog", "kendy"],
         "date": "2014-02-09"
+    },{
+        "title": "死锁检测",
+        "path": "2010-01-27-deadlock-check",
+        "tags": ["blog", "kendy"],
+        "date": "2010-01-27"
     }
 ]
