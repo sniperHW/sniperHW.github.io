@@ -1,0 +1,15 @@
+name: Opower Engineering Blog
+description: The blog of the Opower engineering team.
+url: http://opower.github.io
+markdown: kramdown
+pygments: true
+permalink: /:year/:month/:day/:title
+exclude: [bin, CONTRIBUTING.md, Gemfile, Gemfile.lock, README.md]
+paginate: 5
+paginate_path: 'page/:num'
+kramdown:
+  # Needed for 'markdownify' to work with content coming from team yml files
+  entity_output: symbolic
+team:
+  team_index: false
+  team_dest: authors

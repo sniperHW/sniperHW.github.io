@@ -1,0 +1,13 @@
+active: true
+type: employee
+author: ben.siemon
+name: Ben Siemon
+gravatar: 764a273dfa7f419ada062dcd01130fd5
+github: bsiemon
+bio: |
+  Ben has traveled the country coding everything from life insurance software to
+  DVD-dispensing robots. After joining Opower in 2012 he began working on many interesting
+  problems, including using Elasticsearch to provide insight into utility
+  customer data and further automating Opower's report generation pipeline.
+
+  In his free time, Ben likes cycling, computer games, and rock climbing.

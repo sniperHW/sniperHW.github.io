@@ -1,0 +1,17 @@
+active: true
+type: employee
+author: alexandre.normand
+name: Alexandre Normand
+gravatar: 842a8cd45feda3ee59387ddb0cd59a3a
+github: alexandre-normand
+twitter: alex_normand
+blog:
+  url: http://heyitsalex.net/
+  name: Hey, It's Alex!
+bio: |
+  Alex had the audacity to uproot his family from their confortable life in
+  Montréal to write software with a purpose at Opower. Without regrets, he 
+  spends his days excited about behavioral science, big data, open source
+  and [photo](http://www.flickr.com/photos/alexnormand/)[graphy](http://500px.com/alexnormand).
+
+  On weekends, he might be seen writing [Go](http://golang.org/) in the alley.

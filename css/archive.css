@@ -1,0 +1,23 @@
+.archive {
+  margin-bottom: 50px;
+  padding-left: 40px;
+}
+
+.archive .posts {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.archive .year {
+  margin-left: 10px;
+  margin-top: 0;
+}
+
+.archive .month {
+  border-right: 1px solid #e2e2e2;
+  display: inline-block;
+  margin-right: 10px;
+  padding-right: 14px;
+  text-align: right;
+  width: 38px;
+}

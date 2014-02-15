@@ -1,0 +1,35 @@
+.post .page-header {
+  border-bottom: none;
+  margin-top: 0;
+}
+
+.post,
+.pager {
+  margin-left: 40px;
+  margin-right: 40px;
+}
+
+.post {
+  padding-bottom: 50px;
+}
+
+.post + .post {
+  border-top: 1px solid #d5d6d2;
+}
+
+.post .title,
+.page-header .title {
+  color: #005293;
+  font-size: 32px;
+}
+
+.post .meta,
+.page-header .meta {
+  color: #bbb;
+}
+
+.post .meta a,
+.page-header .meta a {
+  color: #bbb;
+  text-decoration: underline;
+}

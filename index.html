@@ -1,0 +1,30 @@
+---
+layout: default
+title: Engineering Blog
+---
+
+<div class="posts">
+  {% for post in paginator.posts %}
+  <div class="post">
+    <h2><a class="title" href="{{ post.url }}">{{ post.title }}</a></h2>
+    <p class="meta">by {{ post.author | to_author_links }} | {{ post.date | date: "%B %d, %Y" }}</p>
+    <div class="clearfix"></div>
+    <div class="post-content">
+    {{ post.excerpt }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<ul class="pager">
+  {% if paginator.next_page %}
+  <li class="previous"><a href="/page/{{ paginator.next_page }}">&larr; Older</a></li>
+  {% else %}
+  <li class="previous disabled"><a href="#">&larr; Older</a></li>
+  {% endif %}
+  {% if paginator.previous_page %}
+  <li class="next"><a href="{% if paginator.previous_page == 1 %}/{% else %}/page/{{ paginator.previous_page}}{% endif %}">Newer &rarr;</a></li>
+  {% else %}
+  <li class="next disabled"><a href="#">Newer &rarr;</a></li>
+  {% endif %}
+</ul>

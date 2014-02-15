@@ -1,0 +1,54 @@
+---
+layout: default
+---
+
+<div class="profile row">
+  <div class="col-lg-4">
+    {% if page.gravatar %}
+    {% capture default_img %}{{ site.url }}/img/pluggy.png{% endcapture %}
+    <img class="img-thumbnail" width="200" height="200" src="http://www.gravatar.com/avatar/{{ page.gravatar }}?s=400&d={{ default_img | uri_escape }}" />
+    {% else %}
+    <img class="img-thumbnail" width="200" height="200" src="/img/pluggy.png" />
+    {% endif %}
+  </div>
+  <div class="col-lg-8">
+    <div class="page-header">
+      <h1><a href="{{ page.url }}">{{ page.name }}</a></h1>
+      <div class="clearfix"></div>
+    </div>
+
+    <div class="bio">
+      {% if page.bio %}
+      {{ page.bio | markdownify }}
+      {% endif %}
+    </div>
+
+    {% if page.github or page.twitter or page.blog %}
+    <div class="social">
+      <h3>Connect</h3>
+      <ul>
+        {% if page.github %}
+        <li>Github: <a href="http://github.com/{{ page.github }}">{{ page.github }}</a></li>
+        {% endif %}
+        {% if page.twitter %}
+        <li>Twitter: <a href="http://twitter.com/{{ page.twitter }}">@{{ page.twitter }}</a></li>
+        {% endif %}
+        {% if page.blog %}
+        <li>Blog: <a href="{{ page.blog.url }}">{{ page.blog.name }}</a></li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="posts">
+      <h3>Posts</h3>
+      <ul class="posts">
+        {% for post in site.posts %}
+          {% if post.author contains page.author %}
+            <li><a href="{{ post.url }}">{{ post.title }}</a></li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>

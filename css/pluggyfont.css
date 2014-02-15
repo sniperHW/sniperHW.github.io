@@ -1,0 +1,42 @@
+@font-face {
+	font-family: 'pluggy';
+	src:url('pluggyfont/icomoon.eot');
+	src:url('pluggyfont/icomoon.eot?#iefix') format('embedded-opentype'),
+		url('pluggyfont/icomoon.woff') format('woff'),
+		url('pluggyfont/icomoon.ttf') format('truetype'),
+		url('pluggyfont/icomoon.svg#icomoon') format('svg');
+	font-weight: bold;
+	font-style: normal;
+}
+
+/* Use the following CSS code if you want to use data attributes for inserting your icons */
+[data-icon]:before {
+	font-family: 'icomoon';
+	content: attr(data-icon);
+	speak: none;
+	font-weight: normal;
+	font-variant: normal;
+	text-transform: none;
+	line-height: 1;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Use the following CSS code if you want to have a class per icon */
+/*
+Instead of a list of all class selectors,
+you can use the generic selector below, but it's slower:
+[class*="icon-"] {
+*/
+.icon-pluggy-02 {
+	font-family: 'icomoon';
+	speak: none;
+	font-style: normal;
+	font-weight: normal;
+	font-variant: normal;
+	text-transform: none;
+	line-height: 1;
+	-webkit-font-smoothing: antialiased;
+}
+.icon-pluggy-02:before {
+	content: "\4f";
+}

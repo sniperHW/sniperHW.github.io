@@ -1,0 +1,14 @@
+---
+layout: default
+---
+<div class="post">
+  <div class="page-header">
+    <h1><a class="title" href="{{ page.url }}">{{ page.title }}</a></h1>
+    <p class="meta">by {{ page.author | to_author_links }} | {{ page.date | date: "%B %d, %Y" }}</p>
+    <div class="clearfix"></div>
+  </div>
+
+  <div class="post-content">
+    {{ content }}
+  </div>
+</div>

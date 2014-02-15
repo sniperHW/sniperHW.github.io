@@ -1,0 +1,3 @@
+[submodule "publish"]
+	path = _site
+	url = git@github.com:opower/opower.github.io.git
