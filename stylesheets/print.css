@@ -83,17 +83,17 @@ header h2 {
 code, pre {
   font-family: Monaco, "Bitstream Vera Sans Mono", "Lucida Console", Terminal;
   color: #222;
-  margin-bottom: 0;
+  margin-bottom: 30px;
   font-size: 12px;
 }
 
 code {
-  padding: 0;
+  padding: 0 3px;
 }
 
 pre {
   border: solid 1px #ddd;
-  padding: 0;
+  padding: 20px;
   overflow: auto;
 }
 pre code {
