@@ -25,78 +25,46 @@
   </head>
 
   <body>
-    <header>
-      <canvas id="gameoflife"></canvas>
-      <div class="inner">
-        <!-- Change this to your site title -->
-        <a href="/" onclick = "return false"><h1 onclick="home()">sniperHW</h1></a>
-        <span class="searchbar">
-        <input type="text" id="searchbar" onclick="cache()" onkeyup="if(this.value){doSearch(this.value)}else{home()}">
-        </span>
-      </div>
-    </header>
-    <div id="content-wrapper">
-      <div class="inner clearfix">
-        <section id="main-content">
-          <div class="gotop" onclick="goToTop()">
-            <div class="gotopinner">
-              <div class="topleft"></div>
-              <div class="topright"></div>
-              <div class="topbody"></div>
-            </div>
-          </div>
-          <div id="loading">
-            <div class="loading" index="0"></div>
-            <div class="loading" index="1"></div>
-            <div class="loading" index="2"></div>
-            <div class="loading" index="3"></div>
-            <div class="loading" index="4"></div>
-          </div>
-          <a href="/" onclick="return false">
-            <div id="backhome" onclick="home()">
-              <div class="backhome">
-                <div class="backhomeinner">
-                  <div class="backleft"></div>
-                  <div class="backright"></div>
-                  <div class="backbody"></div>
-                </div>
-              </div>
-            </div>
-          </a>
-          <div id="content">
-          </div>
-          <div id="takinglonger"><blockquote>This is taking longer than normal, and there may be some problems in your network.</blockquote></div>
-          <div id="disqus_thread" style="display:none"></div>
-        </section>
+<body>
+  <div class="header navbar-fixed-top" ng-controller="HeaderCtrl">
+    <ul class="nav nav-pills pull-right">
+      <li ng-repeat="quickLink in config.quickLinks" ng-class="{'active': quickLink.text == state}">
+        <a href="{{quickLink.href}}">{{quickLink.text}}</a>
+      </li>
+    </ul>
 
-        <aside id="sidebar">
-          <img src="/images/hooloo.png" />
-          <p>sniperHW:上海艺为网络大宋OL项目服务端主程序员.</br>
-             感兴趣的技术:C,C++,lua,golang,scheme,网络编程,分布式系统</br>
-             开源项目:<a href="https://github.com/sniperHW/luanet">luanet</a>,
-             <a href="https://github.com/sniperHW/luawrapper">luawrapper</a>,
-             <a href="https://github.com/sniperHW/nodelua">nodelua</a></br>                     
-			 联系方式:huangweilook@21cn.com</p>
-          <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/3.0/"><img alt="Creative Commons License" style="border-width:0;-webkit-border-radius: 10px;-moz-border-radius: 10px;border-radius: 10px;" src="/images/cc_by-nc-sa.png" /></a>
-        </aside>
-      </div>
-      <footer>Stay hungry, Stay foolish.</footer>
-    </div>
-  <script src="/javascripts/search.js"></script>
+    <h3 class="page-header text-muted">
+      {{config.title}}
+      <small>{{config.subTitle}}</small>
+    </h3>
+  </div>
+  <div id="container" class="container-narrow">
+    <div ng-view></div>
+    <div id="disqus_thread"></div>
+    <div id="footer"></div>
+  </div>
   <!-- Include javascript files -->
-  <script src="/javascripts/showdown.js"></script>  
+  <script type="text/javascript" src="javascripts/showdown.js"></script>
   <script type="text/javascript" src="javascripts/highlight.pack.js"></script>
   <script type="text/x-mathjax-config">
     MathJax.Hub.Config({
       tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']]}
     });
-  </script>	  
-  <!--<script src="/javascripts/getmd.js"></script>-->
-  <script type="text/javascript" src="javascripts/staticblog.js"></script>  
-  <!--
-  <script src="/javascripts/main.js"></script>
-  -->
-  <!--<script src="/javascripts/gameoflife.js"></script>-->
+  </script>
+  <script type="text/javascript" src="javascripts/staticblog.js"></script>
+  <script type="text/javascript">
+      /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+      var disqus_shortname = 'blogofbruce'; // required: replace example with your forum shortname
+
+      /* * * DON'T EDIT BELOW THIS LINE * * */
+      (function() {
+          var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+          dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+          (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+      })();
+  </script>
+  <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+  <a href="http://disqus.com" class="dsq-brlink">blog comments powered by <span class="logo-disqus">Disqus</span></a>
   <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
-  </body>
+</body>
 </html>
