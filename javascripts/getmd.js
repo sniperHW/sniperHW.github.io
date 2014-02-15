@@ -41,7 +41,7 @@ function main(){
 	}
 	else{
 		//backhome.style.display = 'none';
-		document.title = sitetitle;
+		/*document.title = sitetitle;
 		if(postList){
 			showlist(postList);
 		}
@@ -52,7 +52,7 @@ function main(){
 			var el = document.createElement('script');
 			el.src = 'https://api.github.com/repos/' + githubname + '/' + repos + '/contents/md?callback=showlist';
 			document.getElementsByTagName('head')[0].appendChild(el);
-		}
+		}*/
 	}
 }
 
