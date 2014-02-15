@@ -120,6 +120,7 @@ function loadXMLDoc(url){
 				}
 			}
 		}
+		alert(url);
 		xmlhttp.open("GET",url,true);
 		xmlhttp.send(null);
 	}
