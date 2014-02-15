@@ -24,7 +24,7 @@ function main(){
 	for(var i=0; i<disqusCounts.length; i++){
 		commentscount[Number(disqusCounts[i].id.substr(5))] = disqusCounts[i].innerText;
 	}*/
-	content.innerHTML = '';
+	//content.innerHTML = '';
 	loading.style.display = 'block';
 	if(path.split('/')[1] == 'search'){
 		search(path.split('/')[2]);
