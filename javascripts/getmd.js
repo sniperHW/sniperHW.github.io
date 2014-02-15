@@ -30,6 +30,7 @@ function main(){
 		search(path.split('/')[2]);
 	}
 	else if(path && path.split('/')[1] != 'page'){
+		alert("here")
 		//disqus_url = hostbase + lowerCase(path);
 		//disqus_url = disqus_url.toLowerCase();
 		//showpost(path);
