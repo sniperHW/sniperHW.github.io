@@ -88,12 +88,12 @@ code, pre {
 }
 
 code {
-  padding: 0 3px;
+  padding: 0;
 }
 
 pre {
   border: solid 1px #ddd;
-  padding: 20px;
+  padding: 0;
   overflow: auto;
 }
 pre code {
