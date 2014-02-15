@@ -80,6 +80,25 @@ header h2 {
   padding-top: 20px;
 }
 
+code, pre {
+  font-family: Monaco, "Bitstream Vera Sans Mono", "Lucida Console", Terminal;
+  color: #222;
+  margin-bottom: 30px;
+  font-size: 12px;
+}
+
+code {
+  padding: 0 3px;
+}
+
+pre {
+  border: solid 1px #ddd;
+  padding: 20px;
+  overflow: auto;
+}
+pre code {
+  padding: 0;
+}
 
 ul, ol, dl {
   margin-bottom: 20px;
