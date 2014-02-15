@@ -20,19 +20,19 @@ var commentscount = new Array();
 main();
 
 function main(){
-	var disqusCounts = document.getElementsByName('commentscount');
+	/*var disqusCounts = document.getElementsByName('commentscount');
 	for(var i=0; i<disqusCounts.length; i++){
 		commentscount[Number(disqusCounts[i].id.substr(5))] = disqusCounts[i].innerText;
-	}
+	}*/
 	content.innerHTML = '';
 	loading.style.display = 'block';
 	if(path.split('/')[1] == 'search'){
 		search(path.split('/')[2]);
 	}
 	else if(path && path.split('/')[1] != 'page'){
-		disqus_url = hostbase + lowerCase(path);
+		//disqus_url = hostbase + lowerCase(path);
 		//disqus_url = disqus_url.toLowerCase();
-		showpost(path);
+		//showpost(path);
 		(function() {
             var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
             dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
