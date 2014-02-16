@@ -1,9 +1,15 @@
 本篇开始介绍kendynet的设计思路.
 
+首先介绍base的API,这些API作为kendynet网络层最基本的接口，对epoll和bsd socket做了一个简单的封装，提供一个单线程的异步connect/accpet/recv/send功能.
 
-首先介绍最base的API,这些API就是对bsd socket的一个简单封装，提供简单的异步connect/accpet/recv/send功能.
+既然使用到了epoll这里简单的介绍一下level触发和edge触发.
 
-kendynet的网络接口模仿了IOCP的overlap结构，send/recv请求提供的不是一个缓冲区，而是如下所示的一个被称为io请求的结构体:
++ level触发,当套接口可读/可写时,epoll_wait每次调用都会返回那个套接口
++ edge触发,当套接口从不可读/写的状态转变到可读/写时，epoll_wait才会返回那个套接口.
+
+熟悉level触发模式的同学应该都知道，在level触发模式下,对可写的监听与可读监听是不一样的,因为在大多数情况下socket都处于可写状态，如果一直监听socket的可写事件则epoll_wait就会一直触发.所以在level模式下对写监听的处理一般都是将socket设置为非阻塞模式,然后直接send,如果send返回EAGAIN才添加对这个套接字的写监听.
+
+kendynet使用的是epoll的edge触发模式.为了管理这些处于激活状态的套接口,kendynet的多路分发管理器提供了一个`actived list`,为了解释`actived list`的使用下面先介绍kendynet网络层中的两个核心结构:
 
 	typedef struct
 	{
@@ -12,12 +18,45 @@ kendynet的网络接口模仿了IOCP的overlap结构，send/recv请求提供的�
 		int32_t    iovec_count;
 	}st_io;
 
-`iovec`里存放的是用户用于发送/接收的缓冲区地址和缓冲区大小,`iovec_count`是用户提供的缓冲的数量.
+和
 
-kendynet在底层使用的是epoll的edge触发模式,也就是当socket从不可读/写转变为可读/写的情况下才会触发.熟悉level触发模式的同学应该都知道，在level触发模式下,对可写的监听与可读监听是不一样的,因为在大多数情况下socket都处于可写状态，如果一直监听socket的可写事件则epoll_wait就会一直触发.所以在level模式下对写监听的处理一般都是将socket设置为非阻塞模式,然后直接send,如果send返回EAGAIN才添加对这个套接字的可写监听.
+	typedef struct socket_wrapper
+	{
+	    struct dnode       node;
+	    struct refbase     ref;
+	    volatile uint32_t  status;
+		volatile int32_t  readable;
+		volatile int32_t  writeable;
+	    struct poller     *engine;
+		int32_t fd;
+	    struct llist      pending_send;//尚未处理的发请求
+	    struct llist      pending_recv;//尚未处理的读请求
+	    int8_t  socket_type;           //DATA or ACCEPTOR
+	    struct sockaddr_in addr_local;
+	    struct sockaddr_in addr_remote;
+	    union{
+		    //for data socket
+	        void (*io_finish)(int32_t,st_io*,uint32_t err_code);
+	        //for listen or Connecting socket
+	        struct {
+	            uint64_t timeout;
+	            void *ud;
+	            SOCK  sock;
+	            union{
+	                void (*on_accept)(SOCK,struct sockaddr_in*,void*);
+	                void (*on_connect)(SOCK,struct sockaddr_in*,void*,int);
+	            };
+	        };
+		};
+	}*socket_t;
 
 
-下面看下epoll主循环的处理:
+`st_io`是对网络I/O请求的封装,它被作为Send和Recv系列函数的一个参数,当`st_io`对应的I/O操作完成时会调用那个`socket_wrapper`的`io_finish`函数，并把`st_io`传递过去，以表明这个I/O完成事件针对的是哪个`st_io`.
+
+`socket_wrapper`中有两个成员`pending_send`和`pending_recv`这两个成员都是队列，用于存放`st_io`对象,如果
+用户发起recv/send时对应的套接口不处于可读/可写状态，就会将这个请求先缓存到`pending_recv`/`pending_send`中.
+
+下面看下epoll主循环:
 
 	int32_t epoll_loop(poller_t n,int32_t ms)
 	{
@@ -89,7 +128,7 @@ kendynet在底层使用的是epoll的edge触发模式,也就是当socket从不�
 	}
 
 
-我们首先关注代码中的这个部分:
+注意代码中的这个部分:
 
 	        if(!is_active_empty(n))
 	        {
@@ -103,55 +142,7 @@ kendynet在底层使用的是epoll的edge触发模式,也就是当socket从不�
 	            }
 	        }
 
-这里面有个一'get_active_list'函数的调用,这里需要解释下什么是`actived list`.
-
-一个套接口处于`actived list`需要满足两个条件,套接口处于可读/写状态,同时有相应的请求.
-
-这里我们跳过去看下socket结构的定义:
-	
-	typedef struct socket_wrapper
-	{
-	    struct dnode       node;
-	    struct refbase     ref;
-	    volatile uint32_t  status;
-		volatile int32_t  readable;
-		volatile int32_t  writeable;
-	    struct poller     *engine;
-		int32_t fd;
-	    struct llist      pending_send;//尚未处理的发请求
-	    struct llist      pending_recv;//尚未处理的读请求
-	    int8_t  socket_type;           //DATA or ACCEPTOR
-	    struct sockaddr_in addr_local;
-	    struct sockaddr_in addr_remote;
-	    union{
-		    //for data socket
-	        struct{
-	            void (*io_finish)(int32_t,st_io*,uint32_t err_code);
-	            void (*clear_pending_io)(st_io*);
-	        };
-	        //for listen or Connecting socket
-	        struct {
-	            uint64_t timeout;
-	            void *ud;
-	            SOCK  sock;
-	            union{
-	                void (*on_accept)(SOCK,struct sockaddr_in*,void*);
-	                void (*on_connect)(SOCK,struct sockaddr_in*,void*,int);
-	            };
-	        };
-		};
-	}*socket_t;
-
-
-这里要注意的是下面这两个成员：
-
-    struct llist      pending_send;//尚未处理的发请求
-    struct llist      pending_recv;//尚未处理的读请求
-
-`pending_send`和`pending_recv`链表，里面的内容就是`st_io`，代表了当前待处理的I/O请求.
-
-也就是说一个套接口要处于`actived list`中,必须满足要么套接口可读同时`pending_recv`非空，
-要么套接口可写同时`pending_send`非空.
+这部分代码的逻辑就是从`actived list`取出一个`socket_wrapper`,然后对它执行实际的I/O操作(`Process`),如果`Process`返回非0,则重新将这个`socket_wrapper`投入到`actived list`的尾部.
 
 我们在去看看`process`函数的实现:
 
@@ -166,7 +157,8 @@ kendynet在底层使用的是epoll的edge触发模式,也就是当socket从不�
 		return (read_active || write_active);
 	}
 
-先执行`_recv`和`_send`尝试完成用户的I/O请求，然后再重新计算这个socket是否还需要保留在`actived list`中.如果还需要保留在`actived list`中则在执行完`process`之后调用`putin_active(n,(struct dnode*)s);`将这个套接口重新添加到`actived list`中.
+先执行`_recv`和`_send`尝试完成用户的I/O请求,然后判断套接口是否可读/写和`pending_recv`/`pending_send`是否为空.
+也就是说,只要套接口可读且`pending_recv`非空或接口可写且`pending_send`非空，`Process`就会返回非0,这个套接口就任需要保留在`actived list`中.
 
 一个socket最初是不在`actived list`中的，那么它是怎么被添加到`actived list`中的呢,先看下面两个函数:
 
@@ -187,7 +179,7 @@ kendynet在底层使用的是epoll的edge触发模式,也就是当socket从不�
 	}
 
 这两个函数在套接口变成可读/写状态时被回调,它们首先设置套接口的`readable`/`writeable`标记,
-然后检查是否有用于I/O请求，如果有则将套接口添加到`actived list`中.
+然后检查是否有未处理的I/O请求，如果有则将套接口添加到`actived list`中.
 
 然后再看下面两个函数,它们用于投递一个读/写请求:
 
@@ -221,4 +213,7 @@ kendynet在底层使用的是epoll的edge触发模式,也就是当socket从不�
 
 它们首先将请求放到队列中,然后看套接口当前是否处于可读/写状态,如果处于则将套接口投入到`actived list`中.
 
-未完待续```
+看完上面的介绍，kendynet网络层的核心脉络也就理清楚了,其基本思想就是维护一个`actived list`,`actived list`里的元素是
+`socket_wrapper`,`socket_wrapper`处于`actived list`中的必要条件是套接口可读且`pending_recv`非空或接口可写且`pending_send`非空.在epoll的主循环中会依次为这些`socket_wrapper`执行I/O请求，并在I/O完成后回调`io_finish`函数.
+
+本篇介绍kendynet核心网络层的总体框架，下一遍将会介绍API的使用.
