@@ -152,7 +152,7 @@ function showpost(path){
 }
 
 function showlist(list){
-	var pagesize = 5
+	var pagesize = 8
 	if(path.split('/')[1] == 'page'){
 		page = Number(path.split('/')[2]);
 		if(isNaN(page) || page < 1){
