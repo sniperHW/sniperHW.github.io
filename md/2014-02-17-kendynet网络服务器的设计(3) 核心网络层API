@@ -1,0 +1,130 @@
+本篇介绍kendynet核心网络层的API
+
+	int32_t InitNetSystem();
+	void    CleanNetSystem();
+
+上面两个函数分别用于初始化/清理网络系统，务必在使用网络系统之前和之后调用.
+
+	ENGINE   CreateEngine();
+	void     CloseEngine(ENGINE);
+
+以上两个函数用于创建和销毁一个网络引擎,网络引擎是跨平台的(目前仅实现了对linux epoll的支持).
+
+	typedef void (*CB_ACCEPT)(SOCK,struct sockaddr_in*,void *ud);
+	SOCK EListen(ENGINE,const char *ip,int32_t port,void *ud,CB_ACCEPT);
+
+添加对一个地址:端口的监听,当有一个连接到达是将会回调用户传递的CB_ACCEPT函数.
+
+	typedef void (*CB_CONNECT)(SOCK,struct sockaddr_in*,void *ud,int err);
+	int32_t EConnect(ENGINE,const char *ip,int32_t port,void *ud,CB_CONNECT,uint32_t ms);
+
+异步建立到一个地址:端口的连接,如果函数返回非0,表示建立连接过程出错，否则当连接建立或连接建立超时都会回调用户传进的CB_CONNECT函数.在CB_CONNECT函数中如果传递进来的SOCK不等于INVAILD_SOCK则表示连接建立成功，否则err表明了失败原因.
+
+	int32_t  EngineRun(ENGINE,int32_t timeout);
+
+运行网络消息处理器,最多在函数内执行timeout毫秒.所有的I/O操作，异步通知事件都是在EngineRun中执行的.
+
+	int32_t EWakeUp(ENGINE);
+
+异步唤醒阻塞在epoll_wait上的ENGINE,当网络事件很少时,ENGINE会等待在epoll_wait上，而在某些情况下我们可能想打断这个过程，例如收到程序中断信号的时候，我们可能想立刻停止程序，这个时候就可以调用EWakeUp,让程序的执行立刻从epoll_wait中返回.
+
+	int32_t Recv(SOCK,st_io*,uint32_t *err_code);
+	int32_t Send(SOCK,st_io*,uint32_t *err_code);
+
+	int32_t Post_Recv(SOCK,st_io*);
+	int32_t Post_Send(SOCK,st_io*);
+
+Post系列函数在上一篇中已经介绍过，它们用于投递一个读/写的I/O请求，投递的意思就是即使这个套接口当前可读/写,这个请求也不会立即执行，而是等到EngineRun运行的时候才执行.
+
+而Recv和Send函数的语义就有点不一样，如果套接口当前处于可读/写状态，则会在Recv和Send中直接处理这个I/O请求,否则，它们的行为跟Post函数一样.
+
+然后还要注意下面这个函数指针:
+
+	extern void (*destroy_stio)(st_io*);
+
+这个函数指针默认是NULL,它的作用是销毁套接口时，销毁套接口pending_send和pending_recv中的io请求.如果使用者对io请求的销毁有特殊的处理需求可以将这个指针指向自定义的销毁函数.
+
+以上就是kendynet核心网络层的所有API,下面看一个用上面的API实现的echo服务器:
+	
+	#include "core/kendynet.h"	
+	struct session;
+	
+	struct OVERLAPCONTEXT
+	{
+		st_io   m_super;
+		struct  session *s;
+	};
+	
+	
+	struct session{
+		struct OVERLAPCONTEXT send_overlap;
+		struct OVERLAPCONTEXT recv_overlap;
+		struct iovec wbuf[1];
+		char   buf[65536];
+		SOCK   sock;
+	};
+	
+	
+	void session_recv(struct session *s)
+	{
+		s->wbuf[0].iov_base = s->buf;
+		s->wbuf[0].iov_len = 65536;
+		s->recv_overlap.m_super.iovec_count = 1;
+		s->recv_overlap.m_super.iovec = s->wbuf;
+		s->recv_overlap.s = s;
+		Post_Recv(s->sock,(st_io*)&s->recv_overlap);
+	}
+	
+	void session_send(struct session *s,int32_t size)
+	{
+		s->wbuf[0].iov_base = s->buf;
+	   	s->wbuf[0].iov_len = size;
+		s->send_overlap.m_super.iovec_count = 1;
+		s->send_overlap.m_super.iovec = s->wbuf;
+		s->send_overlap.s = s;     	
+	    Post_Send(s->sock,(st_io*)&s->send_overlap); 
+	}
+	
+	void IoFinish(int32_t bytestransfer,st_io *io,uint32_t err_code)
+	{
+		
+	    struct OVERLAPCONTEXT *OVERLAP = (struct OVERLAPCONTEXT *)io;
+	    struct session *s = OVERLAP->s;
+		if(bytestransfer < 0 && err_code != EAGAIN){
+			printf("socket close\n");
+	        CloseSocket(s->sock);
+	        free(s);
+	        return;
+		}
+	    if(io == (st_io*)&s->send_overlap)
+			session_recv(s);
+	    else if(io == (st_io*)&s->recv_overlap)
+			session_send(s,bytestransfer);
+	}
+	
+	void cb_accept(SOCK sock,struct sockaddr_in *addr,void *ud)
+	{
+		ENGINE e = (ENGINE)ud;
+		struct session *s = calloc(1,sizeof(*s));
+		s->sock = sock;    	
+		Bind2Engine(e,s->sock,IoFinish);
+		session_recv(s);   
+	}
+	
+	
+	int main(int argc,char **argv)
+	{
+		if(argc < 3)
+		{
+			printf("usage <ip> <port>\n");
+			return 0;
+		}
+
+		ENGINE  e = CreateEngine();
+		EListen(e,argv[1],atoi(argv[2]),(void*)e,cb_accept);
+		while(1)
+			EngineRun(e,50);
+		return 0;
+	}
+
+有兴趣的同学可以用[muduo](https://github.com/chenshuo/muduo)的pingpong_client对这个echo服务器做个性能测试.
