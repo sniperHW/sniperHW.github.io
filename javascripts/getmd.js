@@ -152,6 +152,7 @@ function showpost(path){
 }
 
 function showlist(list){
+	var pagesize = 5
 	if(path.split('/')[1] == 'page'){
 		page = Number(path.split('/')[2]);
 		if(isNaN(page) || page < 1){
@@ -165,20 +166,20 @@ function showlist(list){
 	document.getElementById('takinglonger').style.display = 'none';
 	postList = list;
 	var txt = '';
-	if(page*20-20>=list.data.length && page!=1){
-		page = Math.ceil(list.data.length/20);
+	if(page*pagesize-pagesize>=list.data.length && page!=1){
+		page = Math.ceil(list.data.length/pagesize);
 		window.history.replaceState(null, '', '/#!/page/'+page);
 	}
-	for(var i = list.data.length-(page-1)*20; i > 0 && i > list.data.length-page*20; i--){
+	for(var i = list.data.length-(page-1)*pagesize; i > 0 && i > list.data.length-page*pagesize; i--){
 		txt += '<postlist><a href="/#!/' + list.data[i-1].name.replace(/-/g, '/') + '">' + list.data[i-1].name.split('-')[list.data[i-1].name.split('-').length-1].replace(/_/g, ' ') + '</a><div class="post_info"><span class="post_date">Posted at '+list.data[i-1].name.split('-')[0]+'-'+list.data[i-1].name.split('-')[1]+'-'+list.data[i-1].name.split('-')[2]+'</span><span class="disqus_count"><a href="' + hostbase + '/' + encodePath(list.data[i-1].name) + (commentscount[i]?'':'#disqus_thread') + '" name="commentscount" id="post-'+i+'">'+(commentscount[i]?commentscount[i]:'')+'</a></span></div></postlist>';
 	}
-	if(page==1 && page*20<list.data.length){
+	if(page==1 && page*pagesize<list.data.length){
 		txt += '<postlist><a class="prev_page" href="/#!/page/'+(page+1)+'">←较早的文章</a><div style="clear:both"></div></postlist>';
 	}
-	else if(page>1 && page*20>=list.data.length){
+	else if(page>1 && page*pagesize>=list.data.length){
 		txt += '<postlist><a class="next_page" href="/#!/page/'+(page-1)+'">较新的文章→</a><div style="clear:both"></div></postlist>';
 	}
-	else if(page>1 && page*20<list.data.length){
+	else if(page>1 && page*pagesize<list.data.length){
 		txt += '<postlist><a class="prev_page" href="/#!/page/'+(page+1)+'">←较早的文章</a><a class="next_page" href="/#!/page/'+(page-1)+'">较新的文章→</a><div style="clear:both"></div></postlist>';
 	}
 	loading.style.display = 'none';
