@@ -15,7 +15,7 @@
 
 最终,我选择了使用模式(3),也就是每线程一个event loop的方式来实现网络层.其中的原因是模式(1)(2)的现实相对来说比(3)更复杂，并且无法避免锁的使用.所以我选择了模式(3)来实现一个最基础的单线程接口，多线程网络留到上层去处理.而这个基础接口在linux和windows上是基本兼容的.最初的设计可以参看[kendylib](https://github.com/sniperHW/kendylib),其中的网络层同时支持windows和linux.
 
-现在整个服务器框架经过了比较大的重构，已经挪到了新的项目[luanet](https://github.com/sniperHW/luanet)中，并且暂时将对windows的支持去掉了.我的另外一个实验项目[nodelua](https://github.com/sniperHW/nodelua)中的网络部分也使用了kendynet.
+现在整个服务器框架经过了比较大的重构，已经挪到了新的项目[kendynet](https://github.com/sniperHW/kendynet)中，并且暂时将对windows的支持去掉了.我的另外一个实验项目[nodelua](https://github.com/sniperHW/nodelua)和[luanet](https://github.com/sniperHW/luanet)中的网络部分也使用了kendynet.
 
 本篇作为这个系列的开篇，简单介绍一下kendynet的发展过程，下一篇将会进入正题.
 
