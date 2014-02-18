@@ -1,0 +1,384 @@
+有了前面的基础API,现在我们在此基础之上添加封包处理.
+
+kendynet网络封包的实现可以参考[网络接收缓存的设计](www.google.com).这里只是简单的介绍一下封包的格式:
+
+kendynet支持两种封包格式:
+
++ 原始模式,也就是原始的二进制数据，当网络层接收到一段数据时，这块数据立刻被保存到packet结构中,成为一个封包.
+
++ kendynet的自定义模式,kendynet定义的封包结构是最开始是4个字节的包长子段，后面长度为len的数据都是属于此封包的数据.当向一个封包中写入一个定长数据类型例如long时,此数据会直接添加到封包中，并增加长度字段.如果写入的是变长类型,例如字符串,则首先将字符串的长度写进封包中,之后跟着的才是字符串的实际内容.
+
+现在看一下本篇内容都将涉及到的一个核心结构connection:
+	
+	struct connection;
+	struct OVERLAPCONTEXT
+	{
+		st_io   m_super;
+		struct  connection *c;
+	};
+	
+	
+	/*
+	*   返回1：process_packet调用后rpacket_t自动销毁
+	*   否则,将由使用者自己销毁
+	*/
+	typedef int8_t (*CCB_PROCESS_PKT)(struct connection*,rpacket_t);
+	
+	
+	typedef void (*CCB_DISCONNECT)(struct connection*,uint32_t reason);
+	typedef void (*CCB_RECV_TIMEOUT)(struct connection*);
+	typedef void (*CCB_SEND_TIMEOUT)(struct connection*);
+	
+	#define MAX_WBAF 512
+	#define MAX_SEND_SIZE 65536
+	
+	struct connection
+	{
+		struct refbase ref;
+		SOCK socket;
+		struct iovec wsendbuf[MAX_WBAF];
+		struct iovec wrecvbuf[2];
+		struct OVERLAPCONTEXT send_overlap;
+		struct OVERLAPCONTEXT recv_overlap;
+	
+		uint32_t unpack_size; //还未解包的数据大小
+		uint32_t unpack_pos;
+		uint32_t next_recv_pos;
+		buffer_t next_recv_buf;
+		buffer_t unpack_buf;
+	
+	    struct llist send_list;//待发送的包
+	    CCB_PROCESS_PKT cb_process_packet;
+	    CCB_DISCONNECT  cb_disconnect;
+		union{
+	        uint64_t usr_data;
+	        void    *usr_ptr;
+		};
+		uint64_t last_recv;
+		struct timer_item *_timer_item;
+		uint32_t recv_timeout;
+	    uint32_t send_timeout;
+	    CCB_RECV_TIMEOUT cb_recv_timeout;
+	    CCB_SEND_TIMEOUT cb_send_timeout;
+		uint8_t  raw;
+	    volatile uint32_t status;
+		uint8_t  doing_send;
+	};
+	
+connection的内容有点多，我首先来说下connection的作用,connection代表了一个连接,`socket`字段就是底层的套接口对象.
+connection还包含了两个I/O请求对象`send_overlap`和`recv_overlap`,当connection请求I/O操作时会将这两个对象作为参数传递给
+`Send/Recv`系列函数,这也说明了对一个connection同一时间内只可以提交一个send/recv请求，只有当前一个send/recv请求完成后才继续提交下一个.
+
+现在来看一下connection是如何接收数据的.
+
+	static inline void start_recv(struct connection *c)
+	{
+	    if(test_recvable(c->status)){
+	        c->unpack_buf = buffer_create_and_acquire(NULL,BUFFER_SIZE);
+	        c->next_recv_buf = buffer_acquire(NULL,c->unpack_buf);
+	        c->wrecvbuf[0].iov_len = BUFFER_SIZE;
+	        c->wrecvbuf[0].iov_base = c->next_recv_buf->buf;
+	        c->recv_overlap.m_super.iovec_count = 1;
+	        c->recv_overlap.m_super.iovec = c->wrecvbuf;
+	        c->last_recv = GetSystemMs64();
+	        Post_Recv(c->socket,&c->recv_overlap.m_super);
+	    }
+	}
+	
+对connection我没有提供一个类似`socket_wraper`的`Post_recv`和`Recv`函数,只提供了一个`start_recv`,也就是说当调用`start_recv`
+之后,connection就会连续的发出读请求,直到使用者主动关闭connection.
+
+看下`start_recv`的实现,它的内容就是申请一块缓冲,构造一个读请求然后对socket发起读请求.这里要说明一下为什么`wrecvbuf`数组的大小是2.read调用是一个系统调用,也就是说read调用的消耗会比较大,那么我们就希望每次调用read的时候能返回更多的数据,这样就可以减少read的调用次数.所以我分配的每个用于接收数据的buf的大小都是`BUFFER_SIZE`,并且每次`Post_Recv`请求的数据大小也是`BUFFER_SIZE`.但是在很多情况下一个buf的容量并不足已容纳`BUFFER_SIZE`大小的数据.例如:缓冲中已经接收到了一部分数据，但这些数据还不足够组成一个封包,那么此buf中可用的空间就是`BUFFER_SIZE-已经接收到的数据大小`.为了处理这种情况,可以再分配一个`BUFFER_SIZE`大小的buf,在一个read请求中提交两个buf,这两个buf加起来的空间足够容纳`BUFFER_SIZE`大小的数据.
+
+下面看下`connection`收到数据之后如果将数据组合成封包:
+
+	void RecvFinish(int32_t bytestransfer,struct connection *c,uint32_t err_code)
+	{
+		uint32_t recv_size;
+		uint32_t free_buffer_size;
+		buffer_t buf;
+		uint32_t pos;
+		int32_t i = 0;
+		do{
+			if(bytestransfer == 0)
+				return;
+			else if(bytestransfer < 0 && err_code != EAGAIN){
+				//printf("recv close\n");
+	            if(c->status != SCLOSE){
+	                c->status = SCLOSE;
+	                CloseSocket(c->socket);
+	                //被动关闭
+	                c->cb_disconnect(c,err_code);
+				}
+				return;
+			}else if(bytestransfer > 0){
+				int32_t total_size = 0;
+				do{
+					c->last_recv = GetSystemMs64();
+					update_next_recv_pos(c,bytestransfer);
+					c->unpack_size += bytestransfer;
+					total_size += bytestransfer;
+					if(!unpack(c)) return;
+					buf = c->next_recv_buf;
+					pos = c->next_recv_pos;
+					recv_size = BUFFER_SIZE;
+					i = 0;
+					do
+					{
+						free_buffer_size = buf->capacity - pos;
+						free_buffer_size = recv_size > free_buffer_size ? free_buffer_size:recv_size;
+						c->wrecvbuf[i].iov_len = free_buffer_size;
+						c->wrecvbuf[i].iov_base = buf->buf + pos;
+						recv_size -= free_buffer_size;
+						pos += free_buffer_size;
+						if(recv_size && pos >= buf->capacity)
+						{
+							pos = 0;
+							if(!buf->next)
+								buf->next = buffer_create_and_acquire(NULL,BUFFER_SIZE);
+							buf = buf->next;
+						}
+						++i;
+					}while(recv_size);
+					c->recv_overlap.m_super.iovec_count = i;
+					c->recv_overlap.m_super.iovec = c->wrecvbuf;
+					if(total_size >= BUFFER_SIZE)
+					{
+						Post_Recv(c->socket,&c->recv_overlap.m_super);
+						return;
+					}
+					else
+						bytestransfer = Recv(c->socket,&c->recv_overlap.m_super,&err_code);
+				}while(bytestransfer > 0);
+			}
+		}while(1);
+	}
+
+`RecvFinish`是connection接收到数据之后回调的函数,我们主要关心最内层的do循环部分.首先要更新接收缓冲的写下标`update_next_recv_pos`然后将等待拆包的数据大小加上接收到的数据大小`c->unpack_size += bytestransfer;`然后调用`unpack`函数尝试从接收缓冲中拆一个逻辑包出来.当这些都完成后,继续尝试发起一个新的Recv请求.
+
+在这个内层do循环的最后也就是这个部分:
+
+	if(total_size >= BUFFER_SIZE)
+	{
+		Post_Recv(c->socket,&c->recv_overlap.m_super);
+		return;
+	}
+	else
+		bytestransfer = Recv(c->socket,&c->recv_overlap.m_super,&err_code);
+
+这里解释下为什么要这么做.`Recv`在上篇中已经介绍过，如果调用`Recv`时套接口中有数据可读,它会立刻返回,也就是说如果一个套接口永远都有数据可读，这个do循环就不会退出来，直到这个连接被断开,而这样很容易被恶意客户端利用，不断的发送数据，导致服务器无法接收其它客户端发送的数据.所以这里将recv到的数据大小累计计数到`total_size`当`total_size`超过`BUFFER_SIZE`时就调用`Post_Recv`投递读请求，同时从
+RecvFinish中返回，让服务器可以为其它客户端服务.
+
+
+介绍完接收之后，再来看下发送:
+
+	int32_t send_packet(struct connection *c,wpacket_t w)
+	{
+	    if(!test_sendable(c->status)){
+			wpk_destroy(&w);
+			return -1;
+		}
+		st_io *O;
+		if(w){
+			w->base.tstamp = GetSystemMs64();
+	        LLIST_PUSH_BACK(&c->send_list,w);
+		}
+		if(!c->doing_send){
+		    c->doing_send = 1;
+			O = prepare_send(c);
+			if(O) return Post_Send(c->socket,O);
+		}
+		return 0;
+	}
+
+首先待发送的包被添加到`send_list`的尾部.如果当前connection不处于发送过程中就将`send_list`中的数据包组装成一个发送请求`O = prepare_send(c)`,然后将这个写请求投递出去`if(O) return Post_Send(c->socket,O);`
+
+	static inline st_io *prepare_send(struct connection *c)
+	{
+		int32_t i = 0;
+	    wpacket_t w = (wpacket_t)llist_head(&c->send_list);
+		buffer_t b;
+		uint32_t pos;
+		st_io *O = NULL;
+		uint32_t buffer_size = 0;
+		uint32_t size = 0;
+		uint32_t send_size_remain = MAX_SEND_SIZE;
+		while(w && i < MAX_WBAF && send_size_remain > 0)
+		{
+			pos = w->base.begin_pos;
+			b = w->base.buf;
+			buffer_size = w->data_size;
+			while(i < MAX_WBAF && b && buffer_size && send_size_remain > 0)
+			{
+				c->wsendbuf[i].iov_base = b->buf + pos;
+				size = b->size - pos;
+				size = size > buffer_size ? buffer_size:size;
+				size = size > send_size_remain ? send_size_remain:size;
+				buffer_size -= size;
+				send_size_remain -= size;
+				c->wsendbuf[i].iov_len = size;
+				++i;
+				b = b->next;
+				pos = 0;
+			}
+	        if(send_size_remain > 0) w = (wpacket_t)MSG_NEXT(w);//(wpacket_t)w->base.next.next;
+		}
+		if(i){
+			c->send_overlap.m_super.iovec_count = i;
+			c->send_overlap.m_super.iovec = c->wsendbuf;
+			O = (st_io*)&c->send_overlap;
+		}
+		return O;
+	
+	}
+
+我们再来看下`prepare_send`函数,如前面说的read是一个系统调用，它的开销很昂贵,这对send也一样,所以我们自然希望每次send能尽量的提交更多的数据出去.`prepare_send`干的就是这个工作,我们再回头看下`wsendbuf[MAX_WBAF]`,这个数组的大小是`MAX_WBAF`,也就是说一次send请求最多可以提交`MAX_WBAF`个缓冲.而具体可以提交几个buf,除了由有多少个`wpacket`待发送控制以外还由`MAX_SEND_SIZE`控制，以防止一次提交的写请求过大.
+
+当一个`wpacket`被请求发送,但还没有发送完成前,他会被保持在`send_list`中,当数据发送完成后回调`SendFinish`函数的时候会尝试把已经发送完的`wpacket`从`send_list`中移出并销毁.具体的处理读者可以自己查看`SendFinish`的实现.
+
+现在来看一个实例,kendynet最初是为网络游戏设计的，网络游戏服务器有一个很重要的指标就是同屏广播量,就是一个玩家要将自己的消息发送给能看到他的所有其它玩家那里,当能互相看见的玩家变数量大时，这个广播的消息数量就会变得很恐怖,例如有100个玩家能互相看见，他们每秒发送一个消息,那么服务器每秒需要广播的消息数量就是100X100 = 10000.
+
+下面看下这个广播服务器的示例代码:
+
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include "core/netservice.h"
+	
+	#define MAX_CLIENT 2000
+	static struct connection *clients[MAX_CLIENT];
+	
+	static int packet_send_count = 0;
+	static int client_count = 0;
+	
+	void init_clients()
+	{
+		uint32_t i = 0;
+		for(; i < MAX_CLIENT;++i)
+			clients[i] = 0;
+	}
+	
+	void add_client(struct connection *c)
+	{
+		uint32_t i = 0;
+		for(; i < MAX_CLIENT; ++i)
+		{
+			if(clients[i] == 0)
+			{
+				clients[i] = c;
+				++client_count;
+				break;
+			}
+		}
+	}
+	
+	void send2_all_client(rpacket_t r)
+	{
+		uint32_t i = 0;
+		for(; i < MAX_CLIENT; ++i){
+			if(clients[i]){
+	            send_packet(clients[i],wpk_create_by_rpacket(r));
+				++packet_send_count;
+			}
+		}
+	}
+	
+	void remove_client(struct connection *c,uint32_t reason)
+	{
+		printf("client disconnect,reason:%u\n",reason);
+		uint32_t i = 0;
+		for(; i < MAX_CLIENT; ++i){
+			if(clients[i] == c){
+				clients[i] = 0;
+				--client_count;
+				break;
+			}
+		}
+		release_conn(c);
+	}
+	
+	void sendpacket()
+	{
+		uint32_t i = 0;
+		for(; i < MAX_CLIENT; ++i){
+			if(clients[i]){
+	            wpacket_t wpk = NEW_WPK(64);
+	            wpk_write_uint32(wpk,(uint32_t)clients[i]);
+	            uint32_t sys_t = GetSystemMs();
+	            wpk_write_uint32(wpk,sys_t);
+	            wpk_write_string(wpk,"hello kenny");
+	            send_packet(clients[i],wpk);
+			}
+		}
+	}
+	
+	
+	static volatile int8_t stop = 0;
+	
+	static void stop_handler(int signo){
+		printf("stop_handler\n");
+	    stop = 1;
+	}
+	
+	void setup_signal_handler()
+	{
+		struct sigaction act;
+	    bzero(&act, sizeof(act));
+	    act.sa_handler = stop_handler;
+	    sigaction(SIGINT, &act, NULL);
+	    sigaction(SIGTERM, &act, NULL);
+	}
+	
+	void c_recv_timeout(struct connection *c)
+	{
+		printf("recv timeout\n");
+		active_close(c);
+	}
+	
+	void c_send_timeout(struct connection *c)
+	{
+		printf("send timeout\n");
+		active_close(c);
+	}
+	
+	
+	void on_process_packet(struct connection *c,rpacket_t r)
+	{
+		send2_all_client(r);
+	}
+	
+	void accept_client(SOCK s,void*ud)
+	{
+		struct connection *c = new_conn(s,0);
+		add_client(c);
+		struct netservice *tcpserver = (struct netservice *)ud;
+		tcpserver->bind(tcpserver,c,on_process_packet,remove_client
+						,5000,c_recv_timeout,5000,c_send_timeout
+						);
+	}
+	
+	int main(int argc,char **argv)
+	{
+	    mutil_thread = 0;
+		setup_signal_handler();
+		init_clients();
+	    InitNetSystem();
+	    struct netservice *tcpserver = new_service();
+		tcpserver->listen(tcpserver,argv[1],atoi(argv[2]),(void*)tcpserver,accept_client);
+		uint32_t tick,now;
+	    tick = now = GetSystemMs();
+		while(!stop){
+			tcpserver->loop(tcpserver,50);
+	        now = GetSystemMs();
+			if(now - tick > 1000)
+			{
+				printf("client_count:%d,send_count:%d\n",client_count,(packet_send_count*1000)/(now-tick));
+				tick = now;
+				packet_send_count = 0;
+			}
+		}
+		destroy_service(&tcpserver);
+	    CleanNetSystem();
+	    return 0;
+	}
+
+在我的机器上，这个测试程序能支持300个玩家,每秒200W个包的广播，平均延迟在50ms左右.
