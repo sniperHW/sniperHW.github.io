@@ -1,0 +1,58 @@
+刚看了sicp的前两章，一直没看到有关于变量赋值，遂以为scheme跟erlang一样，变量是不可改变的.
+
+今天下了本"the scheme programming language"看了下第二章，发现原来scheme也是支持变量赋值的。
+
+于是写了一段代码测试下,以下代码定义了一个定长数组类型，数组的维度由init确定,例如要定义一个2 X 2
+
+的数组(make-array (list (list 0 0) (list 0 0)) ,这里要注意的一点是init必须显式的用list来定义,如果定义
+
+成'((0 0)(0 0))则在set的时候会出错，认为被set的列表是不可被修改的.还要注意的一点是，对于列表
+
+scheme中传的是引用，所以data的初始化必须调用array-copy,否则用一个array对象的data去创建另
+
+一个array对象的时候，会导致两个对象都指向同一份data.
+
+以下是代码，为了简单起见，省略了很多检测(注意,这段代码在racket上无法运行，racket上不支持set-car!
+
+set-cdr!等,但在scheme48上可以正确的运行)
+
+	(define (make-array init)
+	    (define (list-ref items n)
+	      (if (= n 0)
+	          (car items)
+	          (list-ref (cdr items) (- n 1))))
+	
+	    ;设置数组元素
+	    (define (set-array array idx val)
+	        (define (set-imp array idx val)
+	            (cond ((>= idx (length array)))
+	                  ((= idx 0)(set-car! array val))
+	                  (else (set-imp (cdr array) (- idx 1) val))))
+	        (if (not (pair? idx)) (set-imp array idx val);一维数组
+	            ;多维数组
+	            (cond ((= (length idx) 1) (set-imp array (car idx) val))
+	                  (else (set-array (list-ref array (car idx)) (cdr idx) val))))
+	    )      
+	
+	    ;获取数组元素
+	    (define (get-array array idx)
+	        (if (not (pair? idx))(list-ref array idx)
+	            (cond ((= (length idx) 1)(get-array array (car idx)))
+	                  (else (get-array (list-ref array (car idx)) (car idx)))))
+	    )
+	    (define (array-copy from)
+	        (map (lambda (x)(accumulate cons '() x)) from)
+	    )    
+	    (let ((data (array-copy init)))
+	        (lambda (op . arg)
+	        (cond ((eq? op 'get) (get-array data (car arg)))
+	              ((eq? op 'set) (set-array data (car arg) (car (cdr arg))))
+	              ((eq? op 'print) data)
+	              (else "bad op")))
+	    )
+	)    
+	
+	(define l_array (make-array (list (list 1 2 3 4) (list 5 6 7 8))))    
+	;(l_array 'set '(1 1) 10)
+	;(l_array 'get '(1 1))
+	;(l_arrau 'print)

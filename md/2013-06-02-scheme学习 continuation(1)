@@ -1,0 +1,191 @@
+continuation是在scheme中被提出和实现的，经典的应用有：no-local exit,exception，back-tracking算法，coroutine等.
+所谓continuation，其实本来是一个函数调用机制。我们熟悉的函数调用方法都是使用堆栈，采用Activation record或者叫Stack frame来记录从最顶层函数到当前函数的所有context。
+Continuation则是另一种函数调用方式。它不采用堆栈来保存上下文，而是把这些信息保存在continuation record中。这些continuation record和堆栈的activation record的区别在于，
+它不采用后入先出的线性方式，所有record被组成一棵树（或者图），从一个函数调用另一个函数就等于给当前节点生成一个子节点，然后把系统寄存器移动到这个子节点。
+
+一个函数的退出等于从当前节点退回到父节点。这些节点的删除是由garbage collection来管理。如果没有引用这个record，则它就是可以被删除的。
+
+这样的调用方式和堆栈方式相比的好处在哪里呢？最大的好处就是，它可以让你从任意一个节点跳到另一个节点。而不必遵循堆栈方式的一层一层的return方式。
+比如说，在当前的函数内，你只要有一个其它函数的节点信息，完全可以选择return到那个函数，而不是循规蹈矩地返回到自己的调用者。
+
+*continuation 的三个特性:*
+
++ continuation as first-class，简单地说就是 continuation 也可以视为一等公民，可以当做参数被传递和返回；
+
++ continuation is represented by procedure，也就是说可以视 continuation 为过程，可以调用它，本来也应该如此，因为 continuation 表示的正是“将来要做的事情；
+
++ 假设 call/cc 捕捉了当前的 continuation，并绑定到 lambda 的参数 cc，那么在 lambda 函数体内，一旦 cc 被直接或间接的作为过程调用，那么 call/cc 会立即返回，并且提供给 cc 的参数即为 call/cc 的返回值。
+
+
+下面先用一个no-local exit的使用作为例子:
+
+	(define (search-element element lst)
+	    (display (call/cc (lambda (break)
+	        (for-each (lambda (item) (if (equal? item element) (break #t))) lst) 
+	        #f)))    
+	    ;;;;(break)会跳转到这里
+	    (display " end of search-element\n")    
+	)
+
+上面代码的作用是从一个list中搜索给定的元素，如果找到返回#t,否则返回#f.
+先让我们看下输出:
+
+	> (search-element 0 '(1 2 3 4))
+	#f end of search-element
+	> (search-element 3 '(1 2 3 4))
+	#t end of search-element
+
+search-element使用call/cc方式调用了一个匿名函数,这个匿名函数返回一个boolean类型的值，所以这个返回值也就是search-element的返回值.
+匿名函数中的参数break就是当前函数的continuation.当这个continuation被作为过程调用时将会应用continuation的第三个特性.
+
+下面再来看一个复杂点的例子,一个generate,当generate被调用时，每次从其输入的序列中输出下一个元素，当到达序列的尾部时输出'end.
+
+	(define (for-each proc items)
+	  (define (iter things)
+	    (cond ((null? things))
+	        (else
+	            (proc (car things))
+	            (display "come back\n")
+	            (iter (cdr things)))))
+	 (iter items))
+	
+	
+	(define (generate-one-element-at-a-time lst)
+	  ;; Hand the next item from a-list to "return" or an end-of-list marker
+	  (define (control-state return)
+	    (for-each 
+	     (lambda (element)
+	       (call/cc
+	        (lambda (resume-here)
+	          ;; Grab the current continuation
+	          (set! control-state resume-here) ;; !!!
+	          (return element))))
+	     lst)
+	    (return 'end))
+	
+	  (define (generator)
+	    (call/cc control-state)) 
+	  ;; Return the generator 
+	  generator)
+	  
+我们先来看一下上面代码的输出
+
+	> (define generate-digit (generate-one-element-at-a-time '(0 1 2)))
+	> (generate-digit)
+	0
+	> (generate-digit)
+	come back
+	1
+	> (generate-digit)
+	come back
+	2
+	> (generate-digit)
+	come back
+	end
+	> (generate-digit)
+	come back
+	end	  	
+
+上面输出奇怪的一个地方在于除了0的上面没有come back，所有的其它输出都跟了come back.我们来看看这到底是什么原因.
+当我们第一次调用generate-digit在for-each内部调用proc时，在此例中proc就是(call/cc (lambda (resume-here) ...),call/cc调用捕捉到了当前continuation,
+并将其绑定到control-state,这样后面每次调用generate-digit就会使得从continuation中返回，在这里返回点在proc之后,也就是(display "come back\n"),
+这就解释了为什么除了第一次generate-digit以外，其后的每次generate-digit都会输出一个come back。
+
+最后，贴一段用continuation实现coroutine的代码结束本文.
+
+	(begin
+	    ;一个简单的,用continuation实现的协程接口
+	    (define current-coro '());当前获得运行权的coro
+	    
+	    ;创建coro并返回,fun不会立即执行，由start-run执行
+	    (define (make-coro fun)
+	        (define coro (list #f #f))
+	        (let ((ret (call/cc (lambda (k) (begin
+	            (set-context! coro k)
+	            (list 'magic-kenny coro))))))
+	            (if (and (pair? ret) (eq? 'magic-kenny (car ret)))
+	                (cadr ret)
+	                ;如果下面代码被执行,则是从switch-to调用过来的
+	                (begin (let ((result (fun ret)))
+	                       (set-context! coro #f)
+	                       (set! current-coro (get-from coro))            
+	                       ((get-context (get-from coro)) result)));fun执行完成后要回到调用者处
+	            )
+	        )
+	    )
+	            
+	    (define (get-context coro) (car coro))
+	    (define (set-context! coro context) (set-car! coro context))        
+	    (define (get-from coro) (cadr coro))
+	    (define (set-from! coro from) (set-car! (cdr coro) from))
+	    
+	    (define (switch-to from to arg)
+	        (let ((ret
+	              (call/cc (lambda (k)
+	                    (set-from! to from)
+	                    (set! current-coro to)
+	                    (set-context! from k)
+	                    ((get-context to) arg)
+	                    arg))))
+	         ret)
+	    )
+	    
+	    ;启动一个coro的运行，那个coro将会从它在创建时传入的函数开始运行
+	    (define (start-run coro . arg)
+	        (let ((param (if (null? arg) arg (car arg))))
+	            (if (null? current-coro) (set! current-coro (make-coro #f)))
+	            (switch-to current-coro coro param))
+	    )
+	    
+	    ;将运行权交给另一个coro
+	    (define (yield coro . arg)
+	        (let ((param (if (null? arg) arg (car arg))))
+	            (switch-to current-coro coro param)))
+	    
+	    ;将运行权还给原来把运行权让给自己的那个coro
+	    (define (resume . arg)
+	        (let ((param (if (null? arg) arg (car arg))))
+	            (switch-to current-coro (get-from current-coro) param)))
+	    
+	    (define (fun-coro-a arg)
+	        (display "fun-coro-a\n")
+	        (yield (make-coro fun-coro-b))
+	        (display "coro-a end\n")
+	        "end"
+	    )
+	    
+	    (define (fun-coro-b arg)
+	        (display "fun-coro-b\n")
+	        (display "fun-coro-b end\n")
+	        "end"
+	    )
+	    
+	    (define (test-coro1)
+	        (start-run (make-coro fun-coro-a))
+	    )
+	    
+	    (define (fun-coro-a-2 arg)
+	        (define coro-new (make-coro fun-coro-b-2))
+	        (define (iter)
+	            (display "fun-coro-a\n")
+	            (display (yield coro-new 1))(newline)
+	            (iter)
+	        )
+	        (iter)
+	    )
+	    
+	    (define (fun-coro-b-2 arg)
+	        (define (iter)
+	            (display "fun-coro-b\n")
+	            (display(resume 2))(newline)
+	            (iter)
+	        )
+	        (iter)
+	    )
+	    
+	    (define (test-coro2)
+	        (start-run (make-coro fun-coro-a-2))
+	    )
+	    
+	)	
+	
