@@ -14,7 +14,7 @@
 	{
 		struct dnode node;
 		struct llist freelist;
-		msgque_t que;
+		lockfree_stack_t que;
 		pthread_t       thdid;//·ÖÅäÏß³ÌµÄid
 		char   buf[0];
 	};
@@ -30,7 +30,7 @@
 
 	struct pth_allocator
 	{
-		msgque_t que;
+		lockfree_stack que;
 		uint32_t free_block_size;
 		struct dlist free_blocks;
 		struct dlist recy_blocks;
@@ -50,25 +50,22 @@
 分配过程是从`free_blocks`的表头中获得一个`obj_block`,然后从`obj_block`的`freelist`中弹出一个空闲的对象，分配出去.
 如果分配之后`obj_block`的`freelist`为空，则将`obj_block`从`free_blocks`中弹出，添加到`recy_blocks`中.
 
-这个设计的关键在`que`,它是一个消息队列，如果释放线程与分配线程不是同一个线程，则将要释放的对象push到`que`中，由分配线程在以后的某个时间里从`que`中取出，然后放回到`free_list`中,释放部分的代码如下:
+这个设计的关键在`que`,它是一个无锁算法实现的栈，这里之所以使用栈,首先，我们不需要关注释放的顺序，其次无锁栈的实现最简单，开销最小。
+如果释放线程与分配线程不是同一个线程，则将要释放的对象push到`que`中，由分配线程在以后的某个时间里从`que`中取出，然后放回到`free_list`中,释放部分的代码如下:
 
 	void obj_dealloc(struct allocator *allo ,void *ptr)
 	{
 		obj_allocator_t _allo = (obj_allocator_t)allo;
 		struct obj_slot *obj = (struct obj_slot*)((char*)ptr - sizeof(struct obj_slot));	
 		if(obj->block->thdid == pthread_self()){
-	
-		struct pth_allocator *pth = (struct pth_allocator*)pthread_getspecific(_allo->pkey);;
-		//	struct pth_allocator *pth = (struct pth_allocator*)tls_get(_allo->tls_type);
-			if(!pth)
+
+			struct pth_allocator *pth = (struct pth_allocator*)pthread_getspecific(_allo->pkey);;
+			if(unlikely(!pth))
 				abort();
 			__dealloc(_allo,pth,obj);
 		}
 		else
-		{
-			obj->node.next = NULL;
-			msgque_put(obj->block->que,(struct lnode*)obj);
-		}
+			lfstack_push(obj->block->que,(struct lnode*)obj);
 	}
 
 
@@ -78,7 +75,7 @@
 	{
 		obj_allocator_t _allo = (obj_allocator_t)allo;
 		struct pth_allocator *pth = (struct pth_allocator*)pthread_getspecific(_allo->pkey);
-		if(!pth)
+		if(unlikely(!pth))
 		{
 			pth = new_pth(_allo);
 			pthread_setspecific(_allo->pkey,pth);
@@ -86,16 +83,10 @@
 		if(unlikely(dlist_empty(&pth->free_blocks)))
 		{
 			struct lnode *n;
-			do{
-				msgque_get(pth->que,&n,0);
-				if(NULL != n)
-					__dealloc(_allo,pth,(struct obj_slot*)n);
-				else
-					break;
-			}while(1);
+			while((n = lfstack_pop(&pth->que)) != NULL)
+				__dealloc(_allo,pth,(struct obj_slot*)n);			
 		}else
 			return __alloc(_allo,pth);
-
 		if(unlikely(dlist_empty(&pth->free_blocks)))
 			__expand(_allo,pth);
 		return __alloc(_allo,pth);
