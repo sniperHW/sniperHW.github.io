@@ -1,0 +1,74 @@
+有了tcmalloc和jemalloc，在大多数情况下我们都没有必要再自己写通用的内存分配器(应该说对于极大多数的程序员，都不可能写出比这个两个更好的通用内存分配器)。但是，如果对性能有极致的要求，写一个比通用内存分配器效率更高的池式对象分配器是可能的。
+
+一个最简单也高效的实现就是freelist,每次分配的时候从freelist中get一个，释放的时候put回去就好了。其实现在单线程下是相当简单的，也就几十行代码。
+
+但是在多线程的环境下，问题稍微复杂一点，因为可能有多个线程需要操作freelist,那么就要用锁去保护这个freelist,没次get和put的时候都要加锁显然会导致freelist的操作效率低下.
+
+我在[`block_obj_allocator`](https://github.com/sniperHW/kendylib/blob/master/core/src/block_obj_allocator.c)中利使用了线程本地存储来减少锁的使用，其核心思想是，每个线程都有一个本地的freelist,get和put操作的都是本地的freelist,当本地freelist为空时，向一个全局的freelist,请求一大块的内存，这个时候需要锁操作。在执行put的时候，如果收集了一定数量的对象，就一次性将一定数量的对象返还给全局freelist,这个时候也需要锁操作。
+
+下面提出另外一种实现方式，这个实现要更简单，其核心思想就是对象由谁分配就由谁负责释放。
+
+下面看下实现：
+
+	struct obj_block
+	{
+		struct dnode node;
+		struct llist freelist;
+		msgque_t que;
+		pthread_t       thdid;//·ÖÅäÏß³ÌµÄid
+		char   buf[0];
+	};
+	
+	struct obj_slot
+	{
+		struct lnode node;
+		struct obj_block *block;
+		char buf[0];
+	};
+
+`obj_block`是一个内存块管理器，当对象池中没有对象时，就分配一个`obj_block`,然后将buf中的内存分成一个个单独的`obj_slot`添加到`obj_block`的`freelist`中.`obj_block`中记录了分配线程的线程id,保存在`thdid`变量中.
+
+	struct pth_allocator
+	{
+		msgque_t que;
+		uint32_t free_block_size;
+		struct dlist free_blocks;
+		struct dlist recy_blocks;
+	};
+	
+	
+	struct obj_allocator{
+		struct allocator base;
+		uint32_t alloc_size;
+		uint32_t objsize;
+		uint16_t tls_type;
+		pthread_key_t pkey;
+	};
+
+`pth_allocator`是一个每线程的管理结构,`free_block_size`记录了当前管理结构可供分配的`obj_block`的数量,所有可供分配的`obj_block`被添加到`free_blocks`中，而`recy_blocks`中保存了已经没有可分配对象的`obj_block`.
+
+分配过程是从`free_blocks`的表头中获得一个`obj_block`,然后从`obj_block`的`freelist`中弹出一个空闲的对象，分配出去.
+如果分配之后`obj_block`的`freelist`为空，则将`obj_block`从`free_blocks`中弹出，添加到`recy_blocks`中.
+
+这个设计的关键在`que`,它是一个消息队列，如果释放线程与分配线程不是同一个线程，则将要释放的对象push到`que`中，由分配线程在以后的某个时间里从`que`中取出，然后放回到`free_list`中,释放部分的代码如下:
+
+	void obj_dealloc(struct allocator *allo ,void *ptr)
+	{
+		obj_allocator_t _allo = (obj_allocator_t)allo;
+		struct obj_slot *obj = (struct obj_slot*)((char*)ptr - sizeof(struct obj_slot));	
+		if(obj->block->thdid == pthread_self()){
+	
+		struct pth_allocator *pth = (struct pth_allocator*)pthread_getspecific(_allo->pkey);;
+		//	struct pth_allocator *pth = (struct pth_allocator*)tls_get(_allo->tls_type);
+			if(!pth)
+				abort();
+			__dealloc(_allo,pth,obj);
+		}
+		else
+		{
+			obj->node.next = NULL;
+			msgque_put(obj->block->que,(struct lnode*)obj);
+		}
+	}
+
+分配器的[完整代码](https://github.com/sniperHW/KendyNet/blob/master/kendynet/core/src/obj_allocator.c),使用方式参看[asynserver](https://github.com/sniperHW/KendyNet/blob/master/kendynet/test/asynserver.c)
