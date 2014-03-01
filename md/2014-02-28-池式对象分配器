@@ -71,4 +71,38 @@
 		}
 	}
 
+
+再来看下分配的实现:
+
+	void* obj_alloc(struct allocator *allo,int32_t size)
+	{
+		obj_allocator_t _allo = (obj_allocator_t)allo;
+		struct pth_allocator *pth = (struct pth_allocator*)pthread_getspecific(_allo->pkey);
+		if(!pth)
+		{
+			pth = new_pth(_allo);
+			pthread_setspecific(_allo->pkey,pth);
+		}
+		if(unlikely(dlist_empty(&pth->free_blocks)))
+		{
+			struct lnode *n;
+			do{
+				msgque_get(pth->que,&n,0);
+				if(NULL != n)
+					__dealloc(_allo,pth,(struct obj_slot*)n);
+				else
+					break;
+			}while(1);
+		}else
+			return __alloc(_allo,pth);
+
+		if(unlikely(dlist_empty(&pth->free_blocks)))
+			__expand(_allo,pth);
+		return __alloc(_allo,pth);
+	}
+
+首先看下本地是否有可供分配的对象，如果有直接调用`__alloc`分配,如果本地没有则看下`que`里有没有其线程释放的对，如果有将这些对象回收到本地
+的`free_list`中，接着再次查看本地是否有可供分配的对象，如果还是没有调用`__expand`分配一块内存，创建新的对象，然后再调用`__alloc`分配.
+
+
 分配器的[完整代码](https://github.com/sniperHW/KendyNet/blob/master/kendynet/core/src/obj_allocator.c),使用方式参看[asynserver](https://github.com/sniperHW/KendyNet/blob/master/kendynet/test/asynserver.c)
