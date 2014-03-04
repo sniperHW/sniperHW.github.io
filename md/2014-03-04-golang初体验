@@ -1,0 +1,132 @@
+学习golang的时间断断续续加起来也有将近一个月了，这期间都是偶看翻几页书，没有写过实际的代码.最近做一个app项目，是一个展示类
+的软件，当客户要看某个图片时首先向服务器发出一个请求，比对图片的版本，如果版本与本地一致，则直接显示，如果版本落后了则由服务
+器将最新的版本发送给客户端.
+
+对服务器的需求就是一个简单的版本比对和文件传输,于是打算用go去实现,正好也可以练练手.
+
+在设计上，受到以往框架设计的影响，还是使用了`wpacket`,`rpacket`和共享`buffer`这个方案，不同的地方是go的网络API不支持
+`gather io`,所以`buffer`没有被实现为`buffer list`,而是一整块的连续内存，当`buffer`空间不足时需要手动的去扩展内存.
+
+下面说点与以往用C设计网络框架不同的地方,对于已经习惯了使用异步回调方式来使用网络的我，刚开始用go来做一个网络框架还是稍有不适.
+go的网络API都是同步的，也不存在select,epoll,poll这类东西，这也就意味着需要使用`goroutine`来实现并发.
+
+我的做法是这样的，首先定义了一个类型`Tcpconnection`
+
+	type Tcpsession struct{
+		Conn net.Conn
+		Packet_que chan interface{}
+		Send_que chan *packet.Wpacket
+		raw bool
+		send_close bool
+	}
+	
+其中`Conn`成员是连接对象,`Packet_que`是一个管道，用于接收收到的网络包和连接事件.`Send_que`是另一个管道，用来将需要发送
+的数据包传给sender。
+
+
+	func NewTcpSession(conn net.Conn,raw bool)(*Tcpsession){
+		session := &Tcpsession{Conn:conn,Packet_que:make(chan interface{},1024),Send_que:make(chan *packet.Wpacket,1024),raw:raw,send_close:false}
+		if raw{
+			go dorecv_raw(session)
+		}else{
+			go dorecv(session)
+		}
+		go dosend(session)
+		return session
+	}
+
+	
+在建立一个新连接之后，启动两个goroutine分别用于执行recv和send.
+
+	func dorecv_raw(session *Tcpsession){
+		for{
+			recvbuf := make([]byte,packet.Max_bufsize)
+			_,err := session.Conn.Read(recvbuf)
+			if err != nil {
+				session.Packet_que <- "rclose"
+				return
+			}
+			rpk := packet.NewRpacket(packet.NewBufferByBytes(recvbuf),true)
+			session.Packet_que <- rpk
+		}
+	}
+
+	func dosend(session *Tcpsession){
+		for{
+			wpk,ok :=  <-session.Send_que
+			if !ok {
+				return
+			}
+			_,err := session.Conn.Write(wpk.Buffer().Bytes())
+			if err != nil {
+				session.send_close = true
+				return
+			}
+			if wpk.Fn_sendfinish != nil{
+				wpk.Fn_sendfinish(session,wpk)
+			}
+		}
+	}
+	
+dorecv的工就只是简单的接收数据，将收到的原始数据打包成rpacket,然后写到管道`Packet_que`中。
+dosend则是从'Send_que'中提取出要待发送的wpacket,然后send出去.
+
+然后来看下主过程:
+
+	func main(){
+		service := ":8010"
+		tcpAddr,err := net.ResolveTCPAddr("tcp4", service)
+		if err != nil{
+			fmt.Printf("ResolveTCPAddr")
+		}
+		listener, err := net.ListenTCP("tcp", tcpAddr)
+		if err != nil{
+			fmt.Printf("ListenTCP")
+		}
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				continue
+			}
+			session := tcpsession.NewTcpSession(conn,true)
+			fmt.Printf("a client comming\n")
+			go tcpsession.ProcessSession(session,process_client,session_close)
+		}
+	}
+
+主过程等待在listen上，每当接受一个新的连接就用这个连接作为参数创建一个`Tcpsession`,然后启动一个
+goroutine运行`ProcessSession`。
+
+	func ProcessSession(tcpsession *Tcpsession,process_packet func (*Tcpsession,*packet.Rpacket),session_close func (*Tcpsession)){
+		for{
+			msg,ok := <- tcpsession.Packet_que
+			if !ok {
+				fmt.Printf("client disconnect\n")
+				return
+			}
+			switch msg.(type){
+				case * packet.Rpacket:
+					rpk := msg.(*packet.Rpacket)
+					process_packet(tcpsession,rpk)
+				case string:
+					str := msg.(string)
+					if str == "rclose"{
+						session_close(tcpsession)
+						close(tcpsession.Packet_que)
+						close(tcpsession.Send_que)
+						tcpsession.Conn.Close()
+						return
+					}
+			}
+		}
+	}
+	
+`ProcessSession`的工作就是不断的从Packet_que中取出消息，如果消息是一个rpacket就回调使用者传进来的`process_packet`函数。
+如果是一个网络连接断开的事件则清理这个`Tcpsession`.
+
+对每个连接，使用3个goroutine,2个channel，一个goroutine用于发送，一个用于接收和拆包，一个用于处理数据包.这个模式基本上就是标准的
+go模式了.至于性能,在测试程序中我没有启用goroutine在多核心上运行的特性，也就说整个进程就是一个单线程的程序.其效率并不比实现同样功能
+的C程序差.
+
+	
+	
