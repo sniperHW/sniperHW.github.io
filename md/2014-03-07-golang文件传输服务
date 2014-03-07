@@ -1,0 +1,143 @@
+续上篇，本篇介绍一个完整的golang文件传输服务器。
+
+完整的代码可以看[服务器](https://github.com/sniperHW/kendynet-go/blob/master/test/transferserver.go),[客户端](https://github.com/sniperHW/kendynet-go/blob/master/test/transferclient.go)
+
+网络使用的框架如上篇介绍，这里就不再复述.
+
+首先定义3个命令码：
+
+	const (
+		request_file = 1
+		file_size = 2
+		transfering = 3
+	)
+
+	
+request_file用于请求文件传输，附带的命令参数是文件key.
+
+file_size用于通告客户端文件的大小.
+
+transfering用于传输文件内容，附带参数是文件内容的二进制数据.
+
+
+服务器的文件配置示例
+
+	../learnyouhaskell.pdf=haskell
+	../golang.1.1.2.chm=golang
+	../NodeJS.pdf=NodeJS
+	
+上面的文件配置了3个文件可供传输=左边是文件路径，右边是请求文件时使用的key.
+
+服务器启动时首先调用loadfile将文件导入到内存中,然后根据定义的key,将文件内容插入到字典filemap中:
+
+	func loadfile(){
+		//从配置导入文件
+		F,err := os.Open("./config.txt")
+		if err != nil {
+			fmt.Printf("config.txt open failed\n")
+			return
+		}
+		filemap = make(map[string][]byte)
+		bufferReader := bufio.NewReader(F)
+		eof := false
+		for !eof {
+			line,err := bufferReader.ReadString('\n')
+			if err == io.EOF{
+				err = nil
+				eof = true
+			}else if err != nil{
+				fmt.Printf("parse file error\n")
+				return
+			}
+			if len(line) > 1 {
+				line = line[0:len(line)-1]//drop '\n'
+				fileconfig := strings.Split(line,"=")
+				if len(fileconfig) == 2 {
+					buf, err := ioutil.ReadFile(fileconfig[0])
+					if err != nil {
+						fmt.Printf("%s load error\n",fileconfig[0])
+					}else{	
+						filemap[fileconfig[1]] = buf
+						fmt.Printf("%s load success,key %s\n",fileconfig[0],fileconfig[1])
+					}
+				}
+			}
+		}
+		
+		if filemap["golang"] == nil {
+			fmt.Printf("golang not found\n")
+		}
+		
+		fmt.Printf("loadfile finish\n")	
+	}
+
+接着是服务其的packet_handler:
+
+	func process_client(session *tcpsession.Tcpsession,rpk *packet.Rpacket){
+		cmd,_ := rpk.Uint16()
+		if cmd == request_file {
+			if session.Ud() != nil {
+				fmt.Printf("already in transfer session\n")
+			}else
+			{
+				filename,_ := rpk.String()
+				filecontent := filemap[filename]
+				if filecontent == nil {
+					fmt.Printf("%s not found\n",filename)
+					session.Close()
+				}else{
+					fmt.Printf("request file %s\n",filename)
+					tsession := &transfer_session{filecontent:filecontent,ridx:0}
+					session.SetUd(tsession)
+					
+					wpk := packet.NewWpacket(packet.NewByteBuffer(64),false)
+					wpk.PutUint16(file_size)
+					wpk.PutUint32(uint32(len(filecontent)))
+					session.Send(wpk,nil)
+					tsession.send_file(session)
+				}	
+			}
+		}else{
+			fmt.Printf("cmd error,%d\n",cmd)
+			session.Close()
+		}
+	}
+	
+如果收到的消息是request_file,首先查看请求的文件是否存在，如果存在则创建一个文件传输过程transfer_session,
+并将它与tcpsession绑定,然后发出一个文件大小通告包,紧接着立即调用send_file开始发送文件内容.
+
+	func (this *transfer_session)send_file(session *tcpsession.Tcpsession){
+		remain := len(this.filecontent) - this.ridx
+		sendsize := 0
+		if remain >= 16000 {
+			sendsize = 16000
+		}else{
+			sendsize = remain
+		}
+		wpk := packet.NewWpacket(packet.NewByteBuffer(uint32(sendsize)),false)
+		wpk.PutUint16(transfering)
+		wpk.PutBinary(this.filecontent[this.ridx:this.ridx+sendsize])
+		session.Send(wpk,send_finish)
+		this.ridx += sendsize
+	}
+
+send_file中根据当前发送位置判断还有多少内容需要发送，如果剩余内容小于16000字节就将所剩数据一次性发出，否则
+发送16000字节的数据，并调整发送位置。注意到Send函数带了一个send_finish函数作为参数,其作用是当数据包发送
+完成后回调send_finish函数.
+
+	func send_finish (s interface{},wpk *packet.Wpacket){
+		session := s.(*tcpsession.Tcpsession)
+		tsession := session.Ud().(*transfer_session)
+		if tsession.check_finish(){
+			session.Close()
+			return
+		}
+		tsession.send_file(session)
+	}
+
+send_finish的作用是判断文件是否已经发送完，如果发完断开连接,否则接着发送剩余部分.
+	
+总结一下，golang用来编写服务器应用还是相当方便的,很多细节问题在语言层面或系统库里已经帮你解决掉了，可以将主要的
+精力放在逻辑的处理上.	
+	
+	
