@@ -1,0 +1,32 @@
+相关内核代码:
+
+fs/eventpoll.c
+
+判断一个tcp套接字上是否有激活事件:net/ipv4/tcp.c:tcp_poll函数
+
+
+每个epollfd在内核中有一个对应的eventpoll结构对象.其中关键的成员是一个readylist(`eventpoll:rdllist`)和一棵红黑树(`eventpoll:rbr`).
+
+一个fd被添加到epoll中之后(`EPOLL_ADD`),内核会为它生成一个对应的epitem结构对象.epitem被添加到eventpoll的红黑树中.红黑树的作用是使用者调用`EPOLL_MOD`的时候可以快速找到fd对应的epitem。
+
+调用epoll_wait的时候,以FIFO的顺序将readylist中的epitem出列,将触发的事件拷贝到用户空间.之后判断epitem是否需要重新添加回readylist.
+
+epitem重新添加到readylist必须满足下列条件:
+
+1) epitem上有用户关注的事件触发.
+
+2) epitem被设置为水平触发模式(如果一个epitem被设置为边界触发则这个epitem不会被重新添加到readylist中，在什么时候重新添加到readylist请继续往下看).
+
+注意，如果epitem被设置为`EPOLLONESHOT`模式，则当这个epitem上的事件拷贝到用户空间之后,会将
+这个epitem上的关注事件清空(只是关注事件被清空,并没有从epoll中删除，要删除必须对那个描述符调用`EPOLL_DEL`)，也就是说即使这个epitem上有触发事件，但是因为没有用户关注的事件所以不会被重新添加到readylist中.
+
+
+epitem被添加到readylist中的各种情况(当一个epitem被添加到readylist如果有线程阻塞在epoll_wait中,那个线程会被唤醒):
+
+1)对一个fd调用`EPOLL_ADD`，如果这个fd上有用户关注的激活事件，则这个fd会被添加到readylist.
+
+2)对一个fd调用`EPOLL_MOD`改变关注的事件，如果新增加了一个关注事件且对应的fd上有相应的事件激活，则这个fd会被添加到readylist.
+
+3)当一个fd上有事件触发时(例如一个socket上有外来的数据)会调用ep_poll_callback(见`eventpoll::ep_ptable_queue_proc`),如果触发的事件是用户关注的事件，则这个fd会被添加到readylist中.
+
+了解了epoll的执行过程之后,可以回答一个在使用边界触发时常见的疑问.在一个fd被设置为边界触发的情况下,调用read/write,如何正确的判断那个fd已经没有数据可读/不再可写.epoll文档中的建议是直到触发EAGAIN错误.而实际上只要你请求字节数小于read/write的返回值就可以确定那个fd上已经没有数据可读/不再可写.
