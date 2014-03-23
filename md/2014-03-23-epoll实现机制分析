@@ -30,3 +30,5 @@ epitem被添加到readylist中的各种情况(当一个epitem被添加到readyli
 3)当一个fd上有事件触发时(例如一个socket上有外来的数据)会调用ep_poll_callback(见`eventpoll::ep_ptable_queue_proc`),如果触发的事件是用户关注的事件，则这个fd会被添加到readylist中.
 
 了解了epoll的执行过程之后,可以回答一个在使用边界触发时常见的疑问.在一个fd被设置为边界触发的情况下,调用read/write,如何正确的判断那个fd已经没有数据可读/不再可写.epoll文档中的建议是直到触发EAGAIN错误.而实际上只要你请求字节数小于read/write的返回值就可以确定那个fd上已经没有数据可读/不再可写.
+
+最后用一个epollfd监听另一个epollfd也是合法的,epoll通过调用eventpoll::ep_eventpoll_poll来判断一个epollfd上是否有触发的事件(只能是读事件).
