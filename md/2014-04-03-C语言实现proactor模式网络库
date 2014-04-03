@@ -1,0 +1,22 @@
+最近又将KendyNet重构了一次，主要改变是:
+
+1) 调整文件和函数的命名规则.
+
+2) 添加对UDP,Unix域套接字的支持.
+
+通过重构KendyNet向一个通用网络库跨进了一步.网上已经有很多的开源网络库了,但大多是基于Reactor模式
+实现的.也就是当事件触发时通过用户注册的回调函数去处理IO。而KendyNet是一个Proactor模式的网络库.
+使用者发送请求，请求完成时通过回调函数进行通知.
+
+正因为KendyNet是Proactor模式的，所以我没打算像libevent等事件库一样，把定时器事件，信号事件的处理
+融入到核心网络层里.
+
+KendyNet在设计上将所有的套接字抽象成一个kn_socket_t类型，这根bsd socket的设计有点类似.这个类型对
+用户是隐藏的,只能通过公共API进行操作.不排除将来把kn_socket_t扩展成kn_descriptor_t把普通文件的异步操作支持也加进来.
+
+[重构中的KendyNet](https://github.com/sniperHW/cproctor)
+
+
+
+
+
