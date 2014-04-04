@@ -14,7 +14,7 @@
 KendyNet在设计上将所有的套接字抽象成一个kn_socket_t类型，这根bsd socket的设计有点类似.这个类型对
 用户是隐藏的,只能通过公共API进行操作.不排除将来把kn_socket_t扩展成kn_descriptor_t把普通文件的异步操作支持也加进来.
 
-[重构中的KendyNet](https://github.com/sniperHW/cproctor)
+[重构中的KendyNet](https://github.com/sniperHW/cproactor)
 
 
 
