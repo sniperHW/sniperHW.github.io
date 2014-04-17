@@ -1,0 +1,96 @@
+luanet最初只是一个网络框架，它简单的封装了一些网络相关接口然后暴露到lua中,让lua可以构建简单的网络应用.
+
+随着我的手游服务器的开发，我发现在C语言中要实现一个简洁易用的RPC调用接口并不容易,于是开始考虑将整个服务器框架从主C，辅lua的模式转变成主lua,辅C的模式.网络通讯，异步日志等一些在lua中无法实现或cpu消耗大的组件由C语言实现注册到lua中.由lua组合这些组件来实现一
+个分布式的网络框架.
+
+进入主题，首先简单的介绍luanet的特性:
+
+* 单线程(日志另开一个线程用于往磁盘异步写)
+
+* 支持TCP,UDP,UNIX域套接字
+
+* 提供面向消息和RPC的通讯方式
+ 
+* 利用coroutine实现同步的远程调用接口
+
+* 谈化连接的概念，服务之间通过名字通讯
+
+* 直接使用lua table作为通讯协议
+
+下面通过一个简单的实例来介绍luanet的使用:
+
+	local net = require "lua/net"
+	local table2str = require "lua/table2str"
+	
+	local nameservice = net.netaddr_ipv4("127.0.0.1",8010)
+	
+	local function Plus(arg)
+		return nil,arg.a + arg.b
+	end
+	luanet.RegRPCFunction("Plus") = Plus
+	luanet.StartLocalService("PlusServer",SOCK_STREAM,net.netaddr_ipv4("127.0.0.1",8012))
+	luanet.Register2Name(nameservice)
+ 
+上面的代码实现了一个简单的服务器，提供一个叫做Plus的远程方法.
+首先注册远程方法，名字就是Plus,之后用服务名PlusServer在8012端口上启动一个TCP监听.
+然后向名字服务注册自己.一个简单的远程调用服务就实现了,下面再来看下客户端.
+
+	local net = require "lua/net"
+	local table2str = require "lua/table2str"
+	local Sche = require "lua/scheduler"
+	local nameservice = net.netaddr_ipv4("127.0.0.1",8010)
+	--启动本地服务
+	luanet.StartLocalService("PlusClient",SOCK_STREAM,net.netaddr_ipv4("127.0.0.1",8012))
+	--注册到NameService
+	luanet.Register2Name(nameservice)
+	--启动100个lightprocess执行远程调用
+	for 1,100 do
+		Sche.Spawn(
+					function() 
+						while true do
+							local ret,err = luanet.RPCCall("PlusServer","Plus",{a=1,b=2})
+							if err then
+								return
+							else
+								print(ret)
+							end
+						end	
+					end		
+				  )
+	end
+
+client首先用名字PlusClient在8012上启动一个TCP监听用于跟其它服务通信.之后向名字服务注册自己,然后
+Spawn个coroutine不断的执行对PluServer的Plus远程方法的调用.
+
+对于上面的示例需要说明的一点是,luanet中的所有代码都运行在coroutine环境下，输入luanet xxx.lua
+的时候,luanet首先会载入statr.lua文件，然后用xxx.lua作为参数调用start函数.由start函数启动一个coroutine去执行xxx.lua文件，具体可以查看luanet.c和start.lua.
+
+下面简单介绍luanet的公共接口:
+
+	StartLocalService(local_name,local_socktype,local_addr,cb_disconnected)
+
+用local_name作为服务的名字,启动本地服务.这里需要说明的是,当服务A向服务B发送消息或调用远程方法的时候,A会建立一个到B的连接(connect B的主监听),B在这个连接上接收A发过来的所有消息和请求,但不会通过这个连接往A发送消息或远程方法的响应.如果B要向A发送消息或远程回应，则B要建立一条到A的连接(connect A 的主监听).也就是说A与B之间如果要双向通信需要建立两条单向的连接.
+
+	Register2Name(nameaddr)
+将服务注册到名字服务.
+
+	SendMsg(name,msg)
+向name服务发送一条消息
+
+	RPCCall(name,funcname,arguments)
+调用name服务的funcname方法
+
+	RegRPCFunction(name,func)
+注册一个远程方法
+
+	GetRemoteFuncProvider(funcname)
+获取提供远程方法funcname的服务名字列表
+
+	GetMsg()
+提取发往本服务的消息，如果消息队列为空阻塞当前coroutine.建议的使用方式是启动一组coroutine调用GetMsg,这样当一个coroutine阻塞在远程调用上时还有其它的coroutine可以继续提取消息并服务.
+
+有兴趣的朋友可以关注[luanet](https://github.com/sniperHW/luanet)
+
+
+
+
