@@ -20,8 +20,8 @@ Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 ###TIME-WAIT状态
 
-首先回顾一下`TIME-WAIT`,下面的状态图展示了`socket`是如何在各状态之间迁移的.
+首先回顾一下`TIME-WAIT`,下图展示了`socket`如何在各状态之间迁移.
 
-![Alt TCP状态迁移图](../postimg/tcp-state-diagram.png)
+![alter TCP状态迁移图](../postimg/tcp-state-diagram.png)
 
 
