@@ -24,4 +24,26 @@ Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 ![alter TCP状态迁移图](../postimg/tcp-state-diagram.png)
 
+从上图可以看到，只有主动调用`close`的一方在回到`CLOSED`状态之前必须要先迁移到`TIME-WAIT`状态.
 
+你可以通过`ss -tan`查看当前所有`socket`的状态:
+
+	$ ss -tan | head -5
+	LISTEN     0  511             *:80              *:*     
+	SYN-RECV   0  0     192.0.2.145:80    203.0.113.5:35449
+	SYN-RECV   0  0     192.0.2.145:80   203.0.113.27:53599
+	ESTAB      0  0     192.0.2.145:80   203.0.113.27:33605
+	TIME-WAIT  0  0     192.0.2.145:80   203.0.113.47:50685
+
+####目的
+
+`TIME-WAIT`状态存在的目的有两个:
+
+1)防止之前连接的迷途分组被之后建立的与之前的连接有相同四元组(源地址:源端口,目地地址:目地端口)的接连作为合法分组接收.
+
+[RFC1337](http://tools.ietf.org/html/rfc1337)分析了如果`TIME-WAIT`状态的时间太短会导致什么问题.下面是一个示例，它展示了足够长的`TIME-WAIT`状态时间可以避免什么问题:
+
+![alter TCP状态迁移图](../postimg/duplicate-segment.png)
+
+
+	
