@@ -41,9 +41,9 @@ Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 1)防止之前连接的迷途分组被之后建立的与之前的连接有相同四元组(源地址:源端口,目地地址:目地端口)的接连作为合法分组接收.
 
-[RFC1337](http://tools.ietf.org/html/rfc1337)分析了如果`TIME-WAIT`状态的时间太短会导致什么问题.下面是一个示例，它展示了足够长的`TIME-WAIT`状态时间可以避免什么问题:
+[RFC1337](http://tools.ietf.org/html/rfc1337)分析了如果`TIME-WAIT`状态的时间太短会导致什么问题.下面是一个示例，如果我们没有将`TIME-WAIT`状态的时间缩短，就可以避免此类问题的发生:
 
 ![alter TCP状态迁移图](../postimg/duplicate-segment.png)
-
+因为`TIME-WAIT`状态的时间被缩短导致一个延时的TCP分组被一个不相关的连接接收.
 
 	
