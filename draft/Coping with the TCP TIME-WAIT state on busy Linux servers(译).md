@@ -1,3 +1,5 @@
+(初译稿)
+
 [原文链接](http://vincent.bernat.im/en/blog/2014-tcp-time-wait-state-linux.html)
 
 Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
@@ -64,11 +66,11 @@ Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 现在让我们看一下为什么`TIME-WAIT`状态在一个处理大量连接的服务器上是令人讨厌的.问题主要有三方面:
 
-1)`TIME-WAIT`状态的`socket`在连接管理表中占用了一个位置，导致相同类型的新连接无法建立.
++ `TIME-WAIT`状态的`socket`在连接管理表中占用了一个位置，导致相同类型的新连接无法建立.
 
-2)`TIME-WAIT`状态的`socket`将占用一定的内存.
++ `TIME-WAIT`状态的`socket`将占用一定的内存.
 
-3)`TIME-WAIT`状态的`socket`占用了额外的CPU.
++ `TIME-WAIT`状态的`socket`占用了额外的CPU.
 
 The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 
@@ -92,13 +94,13 @@ The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 
 解决方案是允许更多的4元组.这可以通过下面几个方法实现(实现难度递增):
 
-1)调整`net.ipv4.ip_local_port_range`扩大客户端的端口范围.
++ 调整`net.ipv4.ip_local_port_range`扩大客户端的端口范围.
 
-2)让web服务器监听更多的端口.
++ 让web服务器监听更多的端口.
 
-3)在负载均衡器上配置更多的客户端IP,并且以轮询的方式使用这些IP去与web服务器建立连接.
++ 在负载均衡器上配置更多的客户端IP,并且以轮询的方式使用这些IP去与web服务器建立连接.
 
-4)让web服务器监听更多的IP地址.
++ 让web服务器监听更多的IP地址.
 
 当然还有最后一个方案，就是调整`net.ipv4.tcp_tw_reuse`和`net.ipv4.tcp_tw_recycle`,但是，先别忙着就这么做了，后面的内容会分析这两个设置.
 
@@ -108,7 +110,7 @@ The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 
 首先在应用程序看来`TIME-WAIT`的`socket`并没有消耗内存，因为那个`socket`已经关闭了.而对于内核来说,`TIME-WAIT`的`socket`在3个地方占用了内存(为了3种不同的目的):
 
-1) 连接哈希表,用于快速定位一个存在的连接,例如当收到一个分组时定位这个分组属于哪个连接.
+1.连接哈希表,用于快速定位一个存在的连接,例如当收到一个分组时定位这个分组属于哪个连接.
 这个哈希表的每个桶中都保存了两个链表，一个用于存放`TIME-WAIT`状态的连接一个用于存放正常状态的
 连接.哈希表的大小依赖于系统内存的大小，我们可以通过以下命令查看:
 
@@ -146,9 +148,9 @@ The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 	    struct hlist_node        tw_death_node;
 	};
 
-2) 一组连接链表，每个链表中的连接在相同的时间`TIME-WAIT`到期.这组链表按到期的剩余时间从小到大排序.这个链表中的元素不占用额外的内存，因为它使用的是`struct inet_timewait_sock`中的`struct hlist_node tw_death_node`成员.
+2.一组连接链表，每个链表中的连接在相同的时间`TIME-WAIT`到期.这组链表按到期的剩余时间从小到大排序.这个链表中的元素不占用额外的内存，因为它使用的是`struct inet_timewait_sock`中的`struct hlist_node tw_death_node`成员.
 
-3) 已绑定端口的哈希表，保存本地绑定的端口和相关的参数.用于检测是否可以安全的监听一个给定的端口，或者查找一个可用的端口用于动态绑定.这个哈希表的大小与连接哈希表保持一致:
+3.已绑定端口的哈希表，保存本地绑定的端口和相关的参数.用于检测是否可以安全的监听一个给定的端口，或者查找一个可用的端口用于动态绑定.这个哈希表的大小与连接哈希表保持一致:
 
 	$ dmesg | grep "TCP bind hash table"
 	[    0.169962] TCP bind hash table entries: 65536 (order: 8, 1048576 bytes)
@@ -188,11 +190,11 @@ web服务器的`TIME-WAIT`连接被绑定到80端口,所有被绑定在80端口�
 
 在看完前面的内容之后，如果你依旧为`TIME-WAIT`连接感到苦恼，可以看下下面3个额外的解决方案:
 
-1) 关闭套接口的lingering选项
+* 关闭套接口的lingering选项
 
-2) `net.ipv4.tcp_tw_reuse`
+* `net.ipv4.tcp_tw_reuse`
 
-3) `net.ipv4.tcp_tw_recycle`
+* `net.ipv4.tcp_tw_recycle`
 
 ####lingering选项
 
@@ -219,12 +221,61 @@ web服务器的`TIME-WAIT`连接被绑定到80端口,所有被绑定在80端口�
 
 第二个目的是为了确保被动关闭方可以在丢失最后一个ACK的情况下正确的结束一个连接.被动关闭方会重发FIN分组直到:
 
-1) 主动放弃(结束连接)
+* 主动放弃(结束连接)
 
-2) 接收到它正在等待的ACK(结束连接)
+* 接收到它正在等待的ACK(结束连接)
 
-3) 接收到RST(结束连接)
+* 接收到RST(结束连接)
 
-如果那个重发的FIN分组被主动关闭方及时收到，此时主动关闭方仍然处于`TIME-WAIT`状态，它响应对方一个ACK分组.
+如果重发的FIN分组被主动关闭方及时收到，此时主动关闭方仍然处于`TIME-WAIT`状态，它响应对方一个ACK分组.
 
+一旦主动关闭方使用老的4元组建立新的连接,发往被动关闭方的SYN分组会被忽略(再次感谢时间戳),被动关闭方对这个SYN分组的响应不是RST,而是重发FIN.主动关闭方收到这个FIN分组将响应一个RST(因为新建连接目前处于`SYN-SENT`状态),这就让被动关闭方的连接离开`LAST-ACK`状态正常的终结了那个连接.新建连接的SYN分组将会在1秒钟之后重发,连接最终成功建立，只是会有一点延时：
+![alter TCP状态迁移图](../postimg/last-ack-reuse.png)
+如果远端因为最后的ACK丢失而停留在`LAST-ACK`状态,这个连接将会在本地端迁移到`SYN-SENT`状态的时候被重置.
+
+需要注意的是，当一个连接被重用,`TWRecycled`计算器的值将会加1.
+
+####`net.ipv4.tcp_tw_recycle`
+
+这个机制同样依赖于上面提到的时间戳选项，不同的是它同时影响外出和连进来的连接.因为服务器通常主动关闭连接，所以此机制为服务器提供了便利.
+
+这个机制会让`TIME-WAIT`状态的过期时间变短:它会在重传超时间隔(通过RTT计算出来)之后就将`TIME-WAIT`状态的连接从`TIME-WAIT`表中移除.
+可以通过`ss`命令查看一个存活连接的`RTO`和`RTT`:
+
+	$ ss --info  sport = :2112 dport = :4057
+	State      Recv-Q Send-Q    Local Address:Port        Peer Address:Port   
+	ESTAB      0      1831936   10.47.0.113:2112          10.65.1.42:4057    
+	         cubic wscale:7,7 rto:564 rtt:352.5/4 ato:40 cwnd:386 ssthresh:200 send 4.5Mbps
+
+为了提供`TIME-WAIT`状态所能提供的保障,当过期定时器的值被缩小.一旦有连接进入`TIME-WAIT`状态,这个时间将会被记录到一个专用的结构中,这个结构还记录了previous known destinations的各种指标值.这样，在`TIME-WAIT`过期之前Linux将会丢弃来自这个连接的，时间戳小于最后记录时间戳的任何分组:
+
+	if (tmp_opt.saw_tstamp &&
+	    tcp_death_row.sysctl_tw_recycle &&
+	    (dst = inet_csk_route_req(sk, &fl4, req, want_cookie)) != NULL &&
+	    fl4.daddr == saddr &&
+	    (peer = rt_get_peer((struct rtable *)dst, fl4.daddr)) != NULL) {
+	        inet_peer_refcheck(peer);
+	        if ((u32)get_seconds() - peer->tcp_ts_stamp < TCP_PAWS_MSL &&
+	            (s32)(peer->tcp_ts - req->ts_recent) >
+	                                        TCP_PAWS_WINDOW) {
+	                NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_PAWSPASSIVEREJECTED);
+	                goto drop_and_release;
+	        }
+	}
+
+如果远端主机实际上是一个NAT设备,为了满足时间戳条件,NAT设备在一分钟(应该是一秒钟吧？)之内只会允许建立一个到服务器的连接,因为它们没有共享同一个时间戳计数器.这比禁止这个选项而导致难以察觉的问题要好多了.
+
+`LAST-ACK`状态的处理与`TIME-WAIT`的处理一样.
+
+###总结
+
+终极解决方案应该是扩大端口的数量,这样就不用担心过多的连接进入`TIME-WAIT`状态.
+
+对服务器来说，千万别开启`net.ipv4.tcp_tw_recycle`除非你非常确定你的系统不会工作在一个混杂了NAT设备的环境下.开启`net.ipv4.tcp_tw_reuse`对外来接连没有什么用处.
+
+而对客户端而言,开启`net.ipv4.tcp_tw_reuse`是一个几乎完美的解决方案.而开启`net.ipv4.tcp_tw_recycle`的作用则比开启`net.ipv4.tcp_tw_reuse`要小得多.
+
+下面引用W. Richard Stevens在Unix Network Programming中的一段话:
+
+`TIME-WAIT`状态是我们的朋友(它让重复的分组在网络中过期).与其想办法避免这个状态，我们更应该更深入的去理解它.
 
