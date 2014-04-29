@@ -1,30 +1,45 @@
 (初译稿)
 
+####术语
+
+* TCP连接4元组:一个TCP连接由一个四元组(源ip:源端口，目地ip:目地端口)唯一定义.
+
+* 主动关闭方:主动对一个存活连接调用`close`的一方.
+
+* 被动关闭方:因为对端调用`close`使得连接终止而被动终止连接的一方. 
+
 [原文链接](http://vincent.bernat.im/en/blog/2014-tcp-time-wait-state-linux.html)
 
 Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 下面的介绍引用自Linux内核文档:
 
-允许内核快速回收处于`TIME-WAIT`状态的`socket`.默认值是0,
-在没有技术专家的建议下最好别改变默认值.
+	允许内核快速回收处于TIME-WAIT状态的socket.默认值是0,
+	在没有技术专家的建议下最好别改变默认值.
 
 
 他的兄弟`net.ipv4.tcp_tw_reuse`选项文档描述得稍微清楚一点，但依旧只有三言两语:
 
-当一个新连接到来时允许重用处于`TIME-WAIT`状态的`socket`,只要在协议的角度上看是安全的.默认值是0,在没有技术专家的建议下最好别改变默认值.
+	当一个新连接到来时允许重用处于TIME-WAIT状态的socket,只要在协议的角度上看是安全的.
+	默认值是0,在没有技术专家的建议下最好别改变默认值.
 
 文档的缺乏导致出现了很多文章建议我们将这两个值设置为1,以减少处于`TIME-WAIT`状态的`socket`的数量.但是,正如在`tcp(7)`manual page中阐述的,在面向公网的网络服务器上开启`net.ipv4.tcp_tw_recycle`选项将会导致一些问题.因为服务器无法处理隐藏在同一台NAT设备后的不同计算机的连接.
 
-因此`net.ipv4.tcp_tw_recycle`选项不建议开启.
+	因此不建议开启快速回收处于TIME-WAIT状态socket的选项(net.ipv4.tcp_tw_recycle),
+	因为在一个混杂了NAT设备的网络环境下，它的开启可能会产生一些问题.
 
-尽管这个选择的名字中带有`ipv4`,实际上它同样被应用于IPv6套接口.
+
+这就是我写这篇文章的目的，让更多的程序员减少犯类似错误的可能性:
+![alter 图1](../postimg/duty_calls.png)
+
+注意，尽管这两个选择的名字中带有`ipv4`,而实际上它同样被应用于IPv6套接口.
+
 
 ##TIME-WAIT状态
 
 首先回顾一下`TIME-WAIT`,下图展示了`socket`如何在各状态之间迁移(2).
 
-![alter TCP状态迁移图](../postimg/tcp-state-diagram.png)
+![alter 图2](../postimg/tcp-state-diagram.png)
 
 从上图可以看到，只有主动调用`close`的一方在回到`CLOSED`状态之前必须要先迁移到`TIME-WAIT`状态.
 
