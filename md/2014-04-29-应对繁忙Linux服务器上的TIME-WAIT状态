@@ -321,7 +321,7 @@ lingering选项将改变close的行为，我们首先看下正常情况下close�
 	
 	2.此图版权基于LaTeX Project Public License 1.3.原始文件在本页面中可以找到.
 	
-	3.第一次在RFC 1337中的解决方案提议是在`TIME-WAIT`状态下忽略RST分节.这个行为由net.ipv4.rfc1337
+	3.第一次在RFC 1337中的解决方案提议在`TIME-WAIT`状态下忽略RST分节.这个行为由net.ipv4.rfc1337
 	  控制,在Linux上默认是禁止.因为这不是在RFC中定义完全的解决方案.
 	
 	4.处于`LAST-ACK`状态下,连接会重传最后的FIN分节,直到收到它期待的ACK分节.所以连接不会在这个状态
