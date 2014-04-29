@@ -259,9 +259,11 @@ lingering选项将改变close的行为，我们首先看下正常情况下close�
 
 `TIME-WAIT`状态防止一个延时分节被不相关的连接接收.但是，在某些情况下可以假设来自新连接的分节不会被误解成是来自老连接的.
 
-开启`net.ipv4.tcp_tw_reuse`选项,Linux可以将一个处于`TIME-WAIT`状态的连接重用于新的外出连接.只要新的时间戳严格大于最近一次从老连接上接收到分节的时间戳，也就是说:如果一个外出连接处于`TIME-WAIT`状态,那么在1秒钟之后这个连接就可以被重用(时间戳的单位是秒).
+[RFC 1323](http://tools.ietf.org/html/rfc1323)介绍了一组TCP扩展用于提高高带宽线路的性能.除此之外，还定义了一个携带了两个四字节时间戳的TCP选项.第一个时间戳是发送这个TCP选项时时间戳时钟的当前值.第二个是从远程主机接收到的最新时间戳.
 
-开启`net.ipv4.tcp_tw_reuse`选项,Linux可以将一个处于`TIME-WAIT`状态的连接作为新的外出连接重用.只要建立新连接的时间严格大于最近一次从老连接上接收到分节的时间，也就是说:一个外出的连接处于`TIME-WAIT`状态,那么在1秒钟之后这个连接就可以被重用(时间戳的单位是秒).
+开启`net.ipv4.tcp_tw_reuse`选项,Linux可以将一个处于`TIME-WAIT`状态的连接重用于新的外出连接.只要新的时间戳严格大于最近一次从老连接上接收到的时间戳，也就是说:如果一个外出连接处于`TIME-WAIT`状态,那么在1秒钟之后这个连接就可以被重用(时间戳的单位是秒).
+
+开启`net.ipv4.tcp_tw_reuse`选项,Linux可以将一个处于`TIME-WAIT`状态的连接作为新的外出连接重用.只要建立新连接的时间严格大于最近一次从老连接上接收到的时间戳，也就是说:一个外出的连接处于`TIME-WAIT`状态,那么在1秒钟之后这个连接就可以被重用(时间戳的单位是秒).
 
 
 这么做安全吗?答案是肯定的.`TIME-WAIT`状态的一个目的就是为了防止一个重复的分节被不相关的连接接收.而在有了额外的时间戳之后,重复的分节因为携带了过期的时间戳而被丢弃.
@@ -297,6 +299,22 @@ lingering选项将改变close的行为，我们首先看下正常情况下close�
 	State      Recv-Q Send-Q    Local Address:Port        Peer Address:Port   
 	ESTAB      0      1831936   10.47.0.113:2112          10.65.1.42:4057    
 	         cubic wscale:7,7 rto:564 rtt:352.5/4 ato:40 cwnd:386 ssthresh:200 send 4.5Mbps
+
+为了确保`TIME-WAIT`状态所提供的保障,当过期定时器的值被缩小.如果有连接进入`TIME-WAIT`状态,这个最近的时间戳将会记录到一个专门用于记录目的地址相关信息的专用结构中.这样，在`TIME-WAIT`过期之前Linux将会丢弃来自这个连接的，时间戳小于最后记录时间戳的任何分组:
+
+	if (tmp_opt.saw_tstamp &&
+	    tcp_death_row.sysctl_tw_recycle &&
+	    (dst = inet_csk_route_req(sk, &fl4, req, want_cookie)) != NULL &&
+	    fl4.daddr == saddr &&
+	    (peer = rt_get_peer((struct rtable *)dst, fl4.daddr)) != NULL) {
+	        inet_peer_refcheck(peer);
+	        if ((u32)get_seconds() - peer->tcp_ts_stamp < TCP_PAWS_MSL &&
+	            (s32)(peer->tcp_ts - req->ts_recent) >
+	                                        TCP_PAWS_WINDOW) {
+	                NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_PAWSPASSIVEREJECTED);
+	                goto drop_and_release;
+	        }
+	}
 
 如果远端主机实际上是一个NAT设备,为了满足时间戳条件,NAT设备后面的主机在一分钟之内只允许建立一条到服务器的连接，因为它们没有共享时间戳时钟.所以最好还是不要开启这个选项，因为它会导致一些难以察觉和诊断的问题.
 
