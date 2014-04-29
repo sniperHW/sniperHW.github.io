@@ -8,7 +8,6 @@
 
 * 被动关闭方:因为对端调用`close`使得连接终止而被动终止连接的一方. 
 
-* 迷途或延时的重复分节:
 
 
 [原文链接](http://vincent.bernat.im/en/blog/2014-tcp-time-wait-state-linux.html)
@@ -299,7 +298,7 @@ lingering选项将改变close的行为，我们首先看下正常情况下close�
 	ESTAB      0      1831936   10.47.0.113:2112          10.65.1.42:4057    
 	         cubic wscale:7,7 rto:564 rtt:352.5/4 ato:40 cwnd:386 ssthresh:200 send 4.5Mbps
 
-如果远端主机实际上是一个NAT设备,为了满足时间戳条件,NAT设备在一分钟(应该是一秒钟吧？)之内只会允许建立一个到服务器的连接,因为它们没有共享同一个时间戳计数器.这比禁止这个选项而导致难以察觉的问题要好多了.
+如果远端主机实际上是一个NAT设备,为了满足时间戳条件,NAT设备后面的主机在一分钟之内只允许建立一条到服务器的连接，因为它们没有共享时间戳时钟.所以最好还是不要开启这个选项，因为它会导致一些难以察觉和诊断的问题.
 
 `LAST-ACK`状态的处理与`TIME-WAIT`的处理一样.
 
@@ -317,30 +316,25 @@ lingering选项将改变close的行为，我们首先看下正常情况下close�
 
 注释:
 
-	1.Notably, fiddling with net.netfilter.nf_conntrack_tcp_timeout_time_wait won’t
- 	  change anything on how the TCP stack will handle the TIME-WAIT state. ↩
+	1.注意,调整`net.netfilter.nf_conntrack_tcp_timeout_time_wait`不会影响TCP协议栈处理
+	  `TIME-WAIT`状态的方式.
 	
-	2.This diagram is licensed under the LaTeX Project Public License 1.3. The original
- 	  file is available on this page. ↩
+	2.此图版权基于LaTeX Project Public License 1.3.原始文件在本页面中可以找到.
 	
-	3.The first work-around proposed in RFC 1337 is to ignore RST segments in the TIME-WAIT
-	  state. This behaviour is controlled by net.ipv4.rfc1337 which is not enabled by default
-	  on Linux because this is not a complete solution to the problem described in the RFC. ↩
+	3.第一次在RFC 1337中的解决方案提议是在`TIME-WAIT`状态下忽略RST分节.这个行为由net.ipv4.rfc1337
+	  控制,在Linux上默认是禁止.因为这不是在RFC中定义完全的解决方案.
 	
-	4.While in the LAST-ACK state, a connection will retransmit the last FIN segment until
-	  it gets the expected ACK segment. Therfore, it is unlikely we stay long in this state. ↩
+	4.处于`LAST-ACK`状态下,连接会重传最后的FIN分节,直到收到它期待的ACK分节.所以连接不会在这个状态
+	  下持续太长的时间
 	
-	5.On the client side, older kernels also have to find a free local tuple (source address
-	  and source port) for each outgoing connection. Increasing the number of server ports or
-	  IP won’t help in this case. Linux 3.2 is recent enough to be able to share the same local
-	  tuple for different destinations. Thanks to Willy Tarreau for his insight on this aspect. ↩
+	5.在客户端，一些使用了旧内核的机器上需要为每个外出连接寻找一个(源ip,源端口号)元组.在这种情况下增加
+	  服务器的监听端口数量或ip数量不会有任何帮助.Linux 3.2内核已经可以使用相同的(源ip,源端口号)元组
+	  来建立到不同目地地的连接.
 	
-	6.This last solution may seem a bit dumb since you could just use more ports but some servers
-	  are not able to be configured this way. The before last solution can also be quite cumbersome
-	  to setup, depending on the load-balancing software, but uses less IP than the last solution. ↩
+	6.最后一个解决方案稍显愚蠢,因为你只要监听更多的端口就可以达到效果了，并且很多服务器不允许配置多个
+	  IP。而倒数第二个方案也可能相当繁琐，这依赖于负载均衡软件，但它比最后一个解决方案少用了一些IP。
 	
-	7.The use of a dedicated memory structure for sockets in the TIME-WAIT is here since Linux 2.6.14.
-	  The struct sock_common structure is a bit more verbose and I won’t copy it here. ↩
+	7.专门的结构用于处理`TIME-WAIT`源于Linux 2.6.14.而`struct sock_common`有点冗长，在这里我就不帖出来了.
 	
-	8.When the server closes the connection first, it gets the TIME-WAIT state while the client
-	  will consider the corresponding quadruplet free and hence may reuse it for a new connection. ↩
+	8.服务器主动关闭连接，进入`TIME-WAIT`状态.而客户端则认为对应的四元组已经可以被重用于新连接.
+
