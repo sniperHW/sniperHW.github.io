@@ -256,3 +256,91 @@ lingering选项将改变close的行为，我们首先看下正常情况下close�
 
 无论哪种情况，禁用lingering选项都不是一个万全的解决方案。对于应用协议能正确处理这些问题的应用程序例如HAProxy或Nginx可以禁用lingering选项。但是除非有充分的理由，否则最好不要禁止lingering选项.
 
+####`net.ipv4.tcp_tw_reuse`
+
+`TIME-WAIT`状态防止一个延时分节被不相关的连接接收.但是，在某些情况下可以假设来自新连接的分节不会被误解成是来自老连接的.
+
+开启`net.ipv4.tcp_tw_reuse`选项,Linux可以将一个处于`TIME-WAIT`状态的连接重用于新的外出连接.只要新的时间戳严格大于最近一次从老连接上接收到分节的时间戳，也就是说:如果一个外出连接处于`TIME-WAIT`状态,那么在1秒钟之后这个连接就可以被重用(时间戳的单位是秒).
+
+开启`net.ipv4.tcp_tw_reuse`选项,Linux可以将一个处于`TIME-WAIT`状态的连接作为新的外出连接重用.只要建立新连接的时间严格大于最近一次从老连接上接收到分节的时间，也就是说:一个外出的连接处于`TIME-WAIT`状态,那么在1秒钟之后这个连接就可以被重用(时间戳的单位是秒).
+
+
+这么做安全吗?答案是肯定的.`TIME-WAIT`状态的一个目的就是为了防止一个重复的分节被不相关的连接接收.而在有了额外的时间戳之后,重复的分节因为携带了过期的时间戳而被丢弃.
+
+第二个目的是为了确保被动关闭方可以在丢失最后一个ACK的情况下正确的结束一个连接.被动关闭方会重发FIN分节直到:
+
+* 主动放弃(结束连接)
+
+* 接收到它正在等待的ACK(结束连接)
+
+* 接收到RST(结束连接)
+
+如果重发的FIN分节被主动关闭方及时收到，此时主动关闭方仍然处于`TIME-WAIT`状态，它响应对方一个ACK分组.
+
+一旦主动关闭方重用老的连接向被动关闭方请求建立新的连接.发往被动关闭方的SYN分节将会被忽略(再次感谢时间戳),被动关闭方对这个SYN分组的响应不是RST,而是重发FIN.主动关闭方收到这个FIN分节将响应一个RST(因为新建连接目前处于`SYN-SENT`状态,FIN分节不是它所期待的分节),这就让被动关闭方的连接离开`LAST-ACK`状态正常的终结了那个连接.新建连接的SYN分节将会在1秒钟之后重发,连接最终成功建立，只是会有一点延时：
+
+![alter 图5](../postimg/last-ack-reuse.png)
+
+如果远端因为最后的ACK丢失而停留在`LAST-ACK`状态,这个连接将会在本地端迁移到`SYN-SENT`状态的时候被重置.
+
+需要注意的是，当一个连接被重用,`TWRecycled`计算器的值将会加1.
+
+####`net.ipv4.tcp_tw_recycle`
+
+这个选项的工作机制同样依赖于上面提到的TCP选项，与`net.ipv4.tcp_tw_reuse`不同的是它同时影响外出和连进来的连接.因为服务器通常主动关闭连接(8)，所以此机制为服务器提供了便利.
+
+这个机制同样依赖于上面提到的时间戳选项，不同的是它同时影响外出和连进来的连接.因为服务器通常主动关闭连接(8)，所以此机制为服务器提供了便利.
+
+这个机制会让`TIME-WAIT`状态的过期时间变短:它会在重传超时间隔(通过RTT计算出来)之后就将`TIME-WAIT`状态的连接从`TIME-WAIT`表中移除.
+可以通过`ss`命令查看一个存活连接的`RTO`和`RTT`:
+
+	$ ss --info  sport = :2112 dport = :4057
+	State      Recv-Q Send-Q    Local Address:Port        Peer Address:Port   
+	ESTAB      0      1831936   10.47.0.113:2112          10.65.1.42:4057    
+	         cubic wscale:7,7 rto:564 rtt:352.5/4 ato:40 cwnd:386 ssthresh:200 send 4.5Mbps
+
+如果远端主机实际上是一个NAT设备,为了满足时间戳条件,NAT设备在一分钟(应该是一秒钟吧？)之内只会允许建立一个到服务器的连接,因为它们没有共享同一个时间戳计数器.这比禁止这个选项而导致难以察觉的问题要好多了.
+
+`LAST-ACK`状态的处理与`TIME-WAIT`的处理一样.
+
+###总结
+
+终极解决方案应该是扩大端口的数量,这样就不用担心过多的连接进入`TIME-WAIT`状态.
+
+对服务器来说，千万别开启`net.ipv4.tcp_tw_recycle`除非你非常确定你的系统不会工作在一个混杂了NAT设备的环境下.开启`net.ipv4.tcp_tw_reuse`对外来接连没有什么用处.
+
+而对客户端而言,开启`net.ipv4.tcp_tw_reuse`是一个几乎完美的解决方案.而开启`net.ipv4.tcp_tw_recycle`的作用则比开启`net.ipv4.tcp_tw_reuse`要小得多.
+
+下面引用W. Richard Stevens在Unix Network Programming中的一段话:
+
+`TIME-WAIT`状态是我们的朋友(它让重复的分组在网络中过期).与其想办法避免这个状态，我们更应该更深入的去理解它.
+
+注释:
+
+	1.Notably, fiddling with net.netfilter.nf_conntrack_tcp_timeout_time_wait won’t
+ 	  change anything on how the TCP stack will handle the TIME-WAIT state. ↩
+	
+	2.This diagram is licensed under the LaTeX Project Public License 1.3. The original
+ 	  file is available on this page. ↩
+	
+	3.The first work-around proposed in RFC 1337 is to ignore RST segments in the TIME-WAIT
+	  state. This behaviour is controlled by net.ipv4.rfc1337 which is not enabled by default
+	  on Linux because this is not a complete solution to the problem described in the RFC. ↩
+	
+	4.While in the LAST-ACK state, a connection will retransmit the last FIN segment until
+	  it gets the expected ACK segment. Therfore, it is unlikely we stay long in this state. ↩
+	
+	5.On the client side, older kernels also have to find a free local tuple (source address
+	  and source port) for each outgoing connection. Increasing the number of server ports or
+	  IP won’t help in this case. Linux 3.2 is recent enough to be able to share the same local
+	  tuple for different destinations. Thanks to Willy Tarreau for his insight on this aspect. ↩
+	
+	6.This last solution may seem a bit dumb since you could just use more ports but some servers
+	  are not able to be configured this way. The before last solution can also be quite cumbersome
+	  to setup, depending on the load-balancing software, but uses less IP than the last solution. ↩
+	
+	7.The use of a dedicated memory structure for sockets in the TIME-WAIT is here since Linux 2.6.14.
+	  The struct sock_common structure is a bit more verbose and I won’t copy it here. ↩
+	
+	8.When the server closes the connection first, it gets the TIME-WAIT state while the client
+	  will consider the corresponding quadruplet free and hence may reuse it for a new connection. ↩
