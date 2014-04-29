@@ -22,7 +22,7 @@ Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 ##TIME-WAIT状态
 
-首先回顾一下`TIME-WAIT`,下图展示了`socket`如何在各状态之间迁移.
+首先回顾一下`TIME-WAIT`,下图展示了`socket`如何在各状态之间迁移(2).
 
 ![alter TCP状态迁移图](../postimg/tcp-state-diagram.png)
 
@@ -43,13 +43,13 @@ Linux内核文档没有很好的解释`net.ipv4.tcp_tw_recycle`选项的作用.
 
 1)防止之前连接的迷途分组被之后建立的与之前的连接有相同四元组(源地址:源端口,目地地址:目地端口)的接连作为合法分组接收.
 
-[RFC1337](http://tools.ietf.org/html/rfc1337)分析了如果`TIME-WAIT`状态的时间太短会导致什么问题.下面是一个示例，如果我们没有将`TIME-WAIT`状态的时间缩短，就可以避免此类问题的发生:
+[RFC1337](http://tools.ietf.org/html/rfc1337)分析了如果`TIME-WAIT`状态的时间太短会导致什么问题(3).下面是一个示例，如果我们没有将`TIME-WAIT`状态的时间缩短，就可以避免此类问题的发生:
 
 ![alter TCP状态迁移图](../postimg/duplicate-segment.png)
 
 因为`TIME-WAIT`状态的时间被缩短导致一个延时的TCP分组被一个不相关的连接接收.
 
-2)确保被动关闭方正确的关闭连接.如果最后的ACK确认丢失,被动关闭方的连接将会停留在`LAST-ACK`状态.这个时候主动关闭方请求建立一个到被动关闭方的连接且这个连接重用了之前连接的四元组(源地址:源端口,目地地址:目地端口),如果没有`TIME-WAIT`状态,被动关闭方会认为之前的连接依旧有效,但被动关闭方收到新连接过来的SYN(序列号匹配),它将响应一个RST这将导致新建连接的失败:	
+2)确保被动关闭方正确的关闭连接.如果最后的ACK确认丢失,被动关闭方的连接将会停留在`LAST-ACK`状态(4).这个时候主动关闭方请求建立一个到被动关闭方的连接且这个连接重用了之前连接的四元组(源地址:源端口,目地地址:目地端口),如果没有`TIME-WAIT`状态,被动关闭方会认为之前的连接依旧有效,但被动关闭方收到新连接过来的SYN(序列号匹配),它将响应一个RST这将导致新建连接的失败:	
 ![alter TCP状态迁移图](../postimg/last-ack.png)
 
 如果被动关闭方因为最后的ACK丢失而保持在`LAST-ACK`状态,使用这个老连接的四元组来建立新连接将会失败.
@@ -92,7 +92,7 @@ The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 	   1129 10.24.2.30 10.33.1.70
 	  10536 10.24.2.30 10.33.1.73
 
-解决方案是允许更多的4元组.这可以通过下面几个方法实现(实现难度递增):
+解决方案是允许更多的4元组(5).这可以通过下面几个方法实现(实现难度递增):
 
 + 调整`net.ipv4.ip_local_port_range`扩大客户端的端口范围.
 
@@ -100,7 +100,7 @@ The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 
 + 在负载均衡器上配置更多的客户端IP,并且以轮询的方式使用这些IP去与web服务器建立连接.
 
-+ 让web服务器监听更多的IP地址.
++ 让web服务器监听更多的IP地址(6).
 
 当然还有最后一个方案，就是调整`net.ipv4.tcp_tw_reuse`和`net.ipv4.tcp_tw_recycle`,但是，先别忙着就这么做了，后面的内容会分析这两个设置.
 
@@ -119,7 +119,7 @@ The result of `ss -tan state time-wait | wc -l` is not a problem per se!
 
 我们可以通过内核命令行加`thash_entries`参数来调整entries的数量.
 
-`TIME-WAIT`列表中的每个元素是一个`struct tcp_timewait_sock`结构体，而正常状态列表中的元素是`struct tcp_sock`结构体:
+`TIME-WAIT`列表中的每个元素是一个`struct tcp_timewait_sock`结构体，而正常状态列表中的元素是`struct tcp_sock`结构(7):
 
 	struct tcp_timewait_sock {
 	    struct inet_timewait_sock tw_sk;
@@ -237,7 +237,7 @@ web服务器的`TIME-WAIT`连接被绑定到80端口,所有被绑定在80端口�
 
 ####`net.ipv4.tcp_tw_recycle`
 
-这个机制同样依赖于上面提到的时间戳选项，不同的是它同时影响外出和连进来的连接.因为服务器通常主动关闭连接，所以此机制为服务器提供了便利.
+这个机制同样依赖于上面提到的时间戳选项，不同的是它同时影响外出和连进来的连接.因为服务器通常主动关闭连接(8)，所以此机制为服务器提供了便利.
 
 这个机制会让`TIME-WAIT`状态的过期时间变短:它会在重传超时间隔(通过RTT计算出来)之后就将`TIME-WAIT`状态的连接从`TIME-WAIT`表中移除.
 可以通过`ss`命令查看一个存活连接的`RTO`和`RTT`:
@@ -279,3 +279,34 @@ web服务器的`TIME-WAIT`连接被绑定到80端口,所有被绑定在80端口�
 
 `TIME-WAIT`状态是我们的朋友(它让重复的分组在网络中过期).与其想办法避免这个状态，我们更应该更深入的去理解它.
 
+
+
+注释:
+
+	1.Notably, fiddling with net.netfilter.nf_conntrack_tcp_timeout_time_wait won’t
+ 	  change anything on how the TCP stack will handle the TIME-WAIT state. ↩
+	
+	2.This diagram is licensed under the LaTeX Project Public License 1.3. The original
+ 	  file is available on this page. ↩
+	
+	3.The first work-around proposed in RFC 1337 is to ignore RST segments in the TIME-WAIT
+	  state. This behaviour is controlled by net.ipv4.rfc1337 which is not enabled by default
+	  on Linux because this is not a complete solution to the problem described in the RFC. ↩
+	
+	4.While in the LAST-ACK state, a connection will retransmit the last FIN segment until
+	  it gets the expected ACK segment. Therfore, it is unlikely we stay long in this state. ↩
+	
+	5.On the client side, older kernels also have to find a free local tuple (source address
+	  and source port) for each outgoing connection. Increasing the number of server ports or
+	  IP won’t help in this case. Linux 3.2 is recent enough to be able to share the same local
+	  tuple for different destinations. Thanks to Willy Tarreau for his insight on this aspect. ↩
+	
+	6.This last solution may seem a bit dumb since you could just use more ports but some servers
+	  are not able to be configured this way. The before last solution can also be quite cumbersome
+	  to setup, depending on the load-balancing software, but uses less IP than the last solution. ↩
+	
+	7.The use of a dedicated memory structure for sockets in the TIME-WAIT is here since Linux 2.6.14.
+	  The struct sock_common structure is a bit more verbose and I won’t copy it here. ↩
+	
+	8.When the server closes the connection first, it gets the TIME-WAIT state while the client
+	  will consider the corresponding quadruplet free and hence may reuse it for a new connection. ↩
