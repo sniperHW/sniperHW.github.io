@@ -89,7 +89,7 @@ Spawn个coroutine不断的执行对PluServer的Plus远程方法的调用.
 	GetMsg()
 提取发往本服务的消息，如果消息队列为空阻塞当前coroutine.建议的使用方式是启动一组coroutine调用GetMsg,这样当一个coroutine阻塞在远程调用上时还有其它的coroutine可以继续提取消息并服务.
 
-有兴趣的朋友可以关注[luanet](https://github.com/sniperHW/distri)
+有兴趣的朋友可以关注[luanet](https://github.com/sniperHW/distri.lua)
 
 
 
