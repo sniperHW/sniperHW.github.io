@@ -1,0 +1,148 @@
+cocos2dx基于引用计数管理内存,所有继承自`CCObject`的对象都将获得引用计数的能力,可通过调用`retain`成员函数用于引用计数值,调用`release`减少引用计数值，当计数值减为0时销毁对象.
+
+cocos2dx的对象管理是树形结构的,可通过调用父亲节点的`addChild`成员函数将一个子节点对象添加到父节点中,当子节点被添加到父亲节点中，子节点的引用计数值加1,如果通过`removeChild`将子节点从父节点中移除子节点的引用计数值减1.当父节点被销毁时,会遍历其所有的子节点，将其子节点的引用计数值减1，当子节点的计数值为0，销毁子节点.
+
+提到cocos2dx的内存管理，就不得不提`autorelease`.
+
+我们随便查看一个函数:
+
+	CCSprite* CCSprite::createWithTexture(CCTexture2D *pTexture)
+	{
+	    CCSprite *pobSprite = new CCSprite();
+	    if (pobSprite && pobSprite->initWithTexture(pTexture))
+	    {
+	        pobSprite->autorelease();
+	        return pobSprite;
+	    }
+	    CC_SAFE_DELETE(pobSprite);
+	    return NULL;
+	}
+
+
+注意到`CCSprite`被生成并成功初始化之后(`initWithTexture`)立刻就调用了`autorelease`函数.那么`autorelease`的作用到底是什么.首先当一个对象A被创建出来之后它的引用计数值必定为1,如果我们将A添加到一个父节点B中，此时它的引用计数值为2.之后销毁父节点B,依据上面的描述，父节点被销毁时会将其子节点的引用计数减1.也就是说父节点B被销毁之后A的引用计数值为1。那么我们就必须手动在不再需要A的时候调用`release`或`delete`来将A销毁.为了减轻程序员的负担，cocos2dx提供了`CCAutoreleasePool`当节点A被添加到`autoreleasepool`之后,我们就不在需要关注A的销毁了.因为引擎会在每帧结束之后清理`autoreleasepool`中的对象，调用它的`release`如果如果对象引用计数值降为0将对象销毁.
+
+
+下面是`CCAutoreleasePool::addObject`,`autorelease`最终调用的就是这个函数:
+
+	void CCAutoreleasePool::addObject(CCObject* pObject)
+	{
+    	m_pManagedObjectArray->addObject(pObject);
+
+    	CCAssert(pObject->m_uReference > 1, "reference count should be greater than 1");
+   	 	++(pObject->m_uAutoReleaseCount);
+    	pObject->release(); // no ref count, in this case autorelease pool added.
+	}
+
+
+向`CCAutoreleasePool`中添加一个对象,底层管理容器是一个`array`对象被添加到`array`的时候不检测重复性，所以个一对象可以被添加多次.添加完成后需要调用`release`函数减少引用计数，因为在`array->addObject`中调用了`retain`.
+
+应当注意避免对一个`object`多次调用`autorelease`,对`object`调用一次`autorelease`将导致当前帧结束时对这个对象调用一次`release`,假设一个对象没被添加进任何容器，则其引用计数值为1,如果调用两次`autorelease`则当前帧结束时会调用两次`release`其中第二次必定是在一个已经被销毁的对象上执行的.而如果这一对象已经添加另外一个容器，则会导致那个容器在当前帧结束之后持有一个已经被销毁的对象指针.此问题在cocos2dx rc3中已经添加了assert处理,对象销毁时判断在`pool`是否有另外的实例存在，如果有则报错.虽然只在debug版本中处理，但也不用通过遍历`vector`这么低效的手段来判断重复实例的存在吧.难道2.2.3版本的`m_uAutoReleaseCount`就没有给开发人员提供一点启发?
+
+我们来看看引擎的主循环：
+
+	void CCDisplayLinkDirector::mainLoop(void)
+	{
+	    if (m_bPurgeDirecotorInNextLoop)
+	    {
+	        m_bPurgeDirecotorInNextLoop = false;
+	        purgeDirector();
+	    }
+	    else if (! m_bInvalid)
+	     {
+	         drawScene();
+	     
+	         // release the objects
+	         CCPoolManager::sharedPoolManager()->pop();        
+	     }
+	}
+
+在每帧中调用`drawScene()`,之后就调用`CCPoolManager::sharedPoolManager()->pop()`.
+
+	void CCPoolManager::pop()
+	{
+	    if (! m_pCurReleasePool)
+	    {
+	        return;
+	    }
+	
+	     int nCount = m_pReleasePoolStack->count();
+	
+	    m_pCurReleasePool->clear();
+	 
+	      if(nCount > 1)
+	      {
+	        m_pReleasePoolStack->removeObjectAtIndex(nCount-1);
+	
+	//         if(nCount > 1)
+	//         {
+	//             m_pCurReleasePool = m_pReleasePoolStack->objectAtIndex(nCount - 2);
+	//             return;
+	//         }
+	        m_pCurReleasePool = (CCAutoreleasePool*)m_pReleasePoolStack->objectAtIndex(nCount - 2);
+	    }
+	
+	    /*m_pCurReleasePool = NULL;*/
+	}
+
+
+好了关键函数就是`m_pCurReleasePool->clear()`,这个函数完成了对象的清理过程.
+
+在这里我们发现了一点奇怪的地方,为啥有个`m_pReleasePoolStack`还有个`m_pCurReleasePool`.
+
+首先来看下`ReleasePool`对象是在哪里被创建的:
+
+
+	void CCPoolManager::push()
+	{
+		//if(!m_pCurReleasePool){
+			CCAutoreleasePool* pPool = new CCAutoreleasePool();       //ref = 1
+			m_pCurReleasePool = pPool;
+	
+			m_pReleasePoolStack->addObject(pPool);                   //ref = 2
+	
+			pPool->release();                                       //ref = 1
+		//}
+	}
+
+然后我们跟踪程序的运行将断点放在`push`函数里,断点的第一次命中调用栈如下:
+
+ 	libcocos2d.dll!cocos2d::CCPoolManager::push() 行 145	C++
+ 	libcocos2d.dll!cocos2d::CCPoolManager::getCurReleasePool() 行 200	C++
+ 	libcocos2d.dll!cocos2d::CCPoolManager::addObject(cocos2d::CCObject * pObject=0x003e9938) 行 189	C++
+ 	libcocos2d.dll!cocos2d::CCObject::autorelease() 行 100	C++
+	libcocos2d.dll!cocos2d::CCDictionary::create() 行 396	C++
+ 	libcocos2d.dll!cocos2d::CCConfiguration::init() 行 60	C++
+ 	libcocos2d.dll!cocos2d::CCConfiguration::sharedConfiguration() 行 154	C++
+ 	libcocos2d.dll!cocos2d::CCDirector::setDefaultValues() 行 199	C++
+ 	libcocos2d.dll!cocos2d::CCDirector::init() 行 113	C++
+ 	libcocos2d.dll!cocos2d::CCDirector::sharedDirector() 行 97	C++
+ 	IslandFight.exe!AppDelegate::applicationWillEnterForeground() 行 143	C++
+ 	libcocos2d.dll!cocos2d::CCEGLView::WindowProc(unsigned int message=5, unsigned int wParam=0, long lParam=20972000) 行 444	C++
+ 	libcocos2d.dll!cocos2d::_WindowProc(HWND__ * hWnd=0x002a06aa, unsigned int uMsg=5, unsigned int wParam=0, long lParam=20972000) 行 171	C++
+
+
+第二次调用栈:
+
+	libcocos2d.dll!cocos2d::CCPoolManager::push() 行 145	C++
+	libcocos2d.dll!cocos2d::CCDirector::init() 行 165	C++
+	libcocos2d.dll!cocos2d::CCDirector::sharedDirector() 行 97	C++
+	IslandFight.exe!AppDelegate::applicationWillEnterForeground() 行 143	C++
+	libcocos2d.dll!cocos2d::CCEGLView::WindowProc(unsigned int message=5, unsigned int wParam=0, long lParam=20972000) 行 444	C++
+	libcocos2d.dll!cocos2d::_WindowProc(HWND__ * hWnd=0x002a06aa, unsigned int uMsg=5, unsigned int wParam=0, long lParam=20972000) 行 171	C++
+
+
+也就是说总共创建了两个`ReleasePool`,`ReleasePool`都被添加到`m_pReleasePoolStack`成员中,这个成员是一个`array`而`m_pCurReleasePool`则指向`m_pReleasePoolStack`的最后一个成员.
+
+接着我们将断点放到`CCPoolManager::pop()`中,可以发现第一次`pop`命中的时候`nCount == 2`,所以执行`if(nCount > 1)`之后的流程,
+这个流程的处理就是将`m_pReleasePoolStack`的最后一个成员销毁，然后将`m_pCurReleasePool`指向`m_pReleasePoolStack`中最后一个成员.
+
+继续观察程序的运行可以发现,在第一帧之后`m_pReleasePoolStack`中实际上永远只剩一个成员.我将
+
+`bool CCDirector::init(void)`中的`CCPoolManager::sharedPoolManager()->push()`注释掉，程序依旧能正确的运行.
+
+我搜索cocos2dx 2.2.3和cocos2dx 3.0rc源代码，并无找到必须启用多个`ReleasePool`的地方, 那么多`ReleasePool`存在的意义就仅剩调试了.
+
+
+研究cocos2dx不久，文中有理解不当的地方欢迎指正.
+
+
