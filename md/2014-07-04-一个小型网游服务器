@@ -1,0 +1,465 @@
+曾经发表过一篇叫做生存大挑战服务器设计的博文,本文介绍的服务器就是前文服务器的演进版本.
+
+服务器由C+lua实现,是一个轻量级的网游服务器，非常适合用于实现2D页游,手游和小型的2D端游.
+
+先简单的介绍下这个游戏服务器的特点:
+
+*	除了网关服务器，其余服务都是单线程
+*	网关服务用C语言实现,其余服务除了启动框架外全部由lua实现
+*	服务是全异步的.
+*	默认的后台存储是redis,使用异步redis接口实现
+*	除了面向消息的通讯方式以外,由lua实现的服务之间还可通过RCP方式通讯
+*	内置了2D地图的A星寻路和AOI处理.
+
+因为服务器的主开发语言是lua,使得开发相当简单和便捷，当然不利的一面就是调试不太方便,后续版本会考虑
+集成一个调试端口,远程连接上服务器去调试lua脚本.
+
+
+下面通过贴出一些代码片段详细介绍服务器框架的设计.
+
+
+###gateserver
+
+gateserver主要的作用是维持与玩家的网络连接,充当玩家与游戏服务器之间的通讯代理.因为gateserver主要的处理就IO，所以它是唯一一个完全由C语言实现的服务,也是唯一一个使用多线程的服务.
+
+gateserver中最主要的两个组件是agent和togrpgame.agent的作用是与玩家通信,而togrpgame则是与内部服务器中的groupserver和gameserver通信.
+
+agent和togrpgame分分别运行在不同的线程中,其中togrpgame只有唯一一个实例,而agent则可以启动1-8个实例.
+
+每当监听线程接收到一个玩家的连接,就会随机选择一个agent实例,通过一个消息队列将这个连接交给被选中的agent实例,这个玩家后续的所有通讯请求都由这个agent实例来处理.当玩家向内部服务器组发送消息,agent首先接收到这个数据包,然后将数据包投递给togrpgame,由togrpgame来负责将这个消息转发到内部服务器组.
+如果groupserver/gameserver要给玩家发消息，则togrpgame首先接收到消息，然后将消息广播给所有的agent实例,由各agent实例自己去判断到底需要将消息发给哪些玩家.
+
+###groupserver/gameserver
+
+groupserver/gameserver属于逻辑服务器,几乎全部由lua实现.
+
+	#include "kendynet.h"
+	#include "groupserver.h"
+	#include "config.h"
+	#include "lua/lua_util.h"
+	#include "kn_stream_conn_server.h"
+	#include "common/netcmd.h"
+	#include "common/cmdhandler.h"
+	#include "common/common_c_function.h"
+	
+	IMP_LOG(grouplog);
+	
+	#define MAXCMD 65535
+	static cmd_handler_t handler[MAXCMD] = {NULL};
+	__thread kn_proactor_t t_proactor = NULL;
+	
+	static void process_cmd(uint16_t cmd,kn_stream_conn_t con,rpacket_t rpk){
+		if(handler[cmd]){
+			lua_State *L = handler[cmd]->obj->L;
+			const char *error = NULL;
+			if((error = CALL_OBJ_FUNC2(handler[cmd]->obj,"handle",0,
+							  lua_pushlightuserdata(L,rpk),
+							  lua_pushlightuserdata(L,con)))){
+				LOG_GROUP(LOG_INFO,"error on handle[%u]:%s\n",cmd,error);
+				printf("error on handle[%u]:%s\n",cmd,error);
+			}
+		}else{
+			printf("unknow cmd %d\n",cmd);
+		}
+	}
+	
+	static int on_game_packet(kn_stream_conn_t conn,rpacket_t rpk){
+		uint16_t cmd = rpk_read_uint16(rpk);
+		process_cmd(cmd,conn,rpk);
+		return 1;
+	}
+	
+	static void on_game_disconnected(kn_stream_conn_t conn,int err){
+		process_cmd(DUMMY_ON_GAME_DISCONNECTED,conn,NULL);
+	}
+	
+	
+	static void on_new_game(kn_stream_server_t server,kn_stream_conn_t conn){
+		if(0 == kn_stream_server_bind(server,conn,0,65536,
+					      on_game_packet,on_game_disconnected,
+					      0,NULL,0,NULL)){
+		}else{
+			kn_stream_conn_close(conn);
+		}
+	}
+	
+	static int on_gate_packet(kn_stream_conn_t conn,rpacket_t rpk){
+		uint16_t cmd = rpk_read_uint16(rpk);
+		process_cmd(cmd,conn,rpk);
+		return 1;
+	}
+	
+	static void on_gate_disconnected(kn_stream_conn_t conn,int err){
+		process_cmd(DUMMY_ON_GATE_DISCONNECTED,conn,NULL);
+	}
+	
+	static void on_new_gate(kn_stream_server_t server,kn_stream_conn_t conn){
+		if(0 == kn_stream_server_bind(server,conn,0,65536,
+					      on_gate_packet,on_gate_disconnected,
+					      0,NULL,0,NULL)){
+			printf("on_new_gate\n");
+		}else{
+			kn_stream_conn_close(conn);
+		}
+	
+	}
+	
+	
+	static volatile int stop = 0;
+	static void sig_int(int sig){
+		stop = 1;
+	}
+	
+	int reg_cmd_handler(lua_State *L){
+		uint16_t cmd = lua_tonumber(L,1);
+		luaObject_t obj = create_luaObj(L,2);
+		if(!handler[cmd]){
+			printf("reg cmd %d\n",cmd);
+			cmd_handler_t h = calloc(1,sizeof(*h));
+			h->_type = FN_LUA;
+			h->obj = obj;
+			handler[cmd] = h;
+			lua_pushboolean(L,1);
+		}else{
+			release_luaObj(obj);
+			lua_pushboolean(L,0);
+		}
+		return 1;
+	}
+	
+	static int lua_grouplog(lua_State *L){
+		int lev = lua_tonumber(L,1);
+		const char *msg = lua_tostring(L,2);
+		LOG_GROUP(lev,"%s",msg);
+		return 0;
+	}
+	
+	void reg_group_c_function(lua_State *L){
+		lua_getglobal(L,"GroupApp");
+		if(!lua_istable(L, -1))
+		{
+			lua_pop(L,1);
+			lua_newtable(L);
+			lua_pushvalue(L,-1);
+			lua_setglobal(L,"GroupApp");
+		}
+	
+		lua_pushstring(L, "reg_cmd_handler");
+		lua_pushcfunction(L, reg_cmd_handler);
+		lua_settable(L, -3);
+	
+		lua_pushstring(L, "grouplog");
+		lua_pushcfunction(L, lua_grouplog);
+		lua_settable(L, -3);
+	
+		lua_pop(L,1);
+	}
+	
+	static lua_State *init(){
+		lua_State *L = luaL_newstate();
+		luaL_openlibs(L);
+		if (luaL_dofile(L,"script/handler.lua")) {
+			const char * error = lua_tostring(L, -1);
+			lua_pop(L,1);
+			LOG_GROUP(LOG_INFO,"error on handler.lua:%s\n",error);
+			printf("error on handler.lua:%s\n",error);
+			lua_close(L); 
+			return NULL;
+		}
+		//注册C函数，常量到lua
+		reg_common_c_function(L);
+	
+		//注册group特有的函数
+		reg_group_c_function(L);
+	
+		//注册lua消息处理器
+		if(CALL_LUA_FUNC(L,"reghandler",1)){
+			const char * error = lua_tostring(L, -1);
+			lua_pop(L,1);
+			LOG_GROUP(LOG_INFO,"error on reghandler:%s\n",error);
+			printf("error on reghandler:%s\n",error);
+			lua_close(L); 
+		}
+		
+		if(!lua_toboolean(L,1)){
+			LOG_GROUP(LOG_ERROR,"reghandler failed\n");
+			printf("reghandler failed\n");
+			return NULL;
+		}
+		return L;
+	}
+	
+	int on_db_initfinish(lua_State *_){
+		printf("on_db_initfinish\n");
+		(void)_;
+		//启动监听
+		kn_sockaddr lgameserver;
+		kn_addr_init_in(&lgameserver,kn_to_cstr(g_config->lgameip),g_config->lgameport);
+		kn_new_stream_server(t_proactor,&lgameserver,on_new_game);
+	
+		kn_sockaddr lgateserver;
+		kn_addr_init_in(&lgateserver,kn_to_cstr(g_config->lgateip),g_config->lgateport);
+		kn_new_stream_server(t_proactor,&lgateserver,on_new_gate);
+		
+		return 0;
+	} 
+	
+	int main(int argc,char **argv){
+		if(loadconfig() != 0){
+			return 0;
+		}
+		signal(SIGINT,sig_int);
+		t_proactor = kn_new_proactor();	
+		if(!init())
+			return 0;
+		while(!stop)
+			kn_proactor_run(t_proactor,50);
+		return 0;	
+	}
+
+
+上面贴出的是groupserver的启动框架,其中最主要的部分是`init`和`process_cmd`.
+
+`init`的工作是向lua注册一些C接口函数,然后调用lua函数`reghandler`注册所有的消息处理函数.
+
+`process_cmd`则是在接收到消息之后根据消息码去调用注册的lua处理函数.
+
+
+	local Gate = require "script/gate"
+	local Game = require "script/game"
+	local Dbmgr = require "script/dbmgr"
+	local Player = require "script/player"
+	local Rpc = require "script/rpc"
+	
+	--注册各模块的消息处理函数
+	function reghandler()
+		Gate.RegHandler()
+		Game.RegHandler()
+		Player.RegHandler()
+		Rpc.RegHandler()
+		return Dbmgr.Init()
+	end
+
+我们再来看下`reghandler`,它的作用就是调用各子模块的注册接口为各子模块注册消息处理函数.
+
+下面我们看下rpc模块
+
+	local Cjson = require "cjson"
+	
+	local pending_rpc = {}
+	local rpc_function = {}
+	local counter = 1
+	
+	local function rpcCall(conn,remoteFunc,param,callbackObj)
+		local rpcno = '' .. C.systemms() .. '' .. counter
+		counter = counter + 1
+		local wpk = new_wpk()
+		wpk_write_uint16(wpk,CMD_RPC_CALL)
+		local rpcReq = {rpcno = rpcno,param=param}
+		wpk_write_string(wpk,remoteFunc)
+		wpk_write_string(wpk,Cjson.encode(rpcReq))
+		if C.send(conn,wpk) then
+			local conn_pending_rpc = pending_rpc[conn]
+			if not conn_pending_rpc then
+				conn_pending_rpc = {}
+				pending_rpc[conn] = conn_pending_rpc
+			end
+			conn_pending_rpc[rpcno] = callbackObj
+			return true
+		else
+			return false
+		end
+	end
+	
+	local function rpcResponse(rpcHandle,result,error)
+		local conn = rpcHandle.conn
+		local rpcno = rpcHandle.rpcno
+		local response = {rpcno = rpcno,ret=result,err=error}
+		local wpk = new_wpk()
+		wpk_write_uint16(wpk,CMD_RPC_RESPONSE)
+		wpk_write_string(wpk,Cjson.encode(response))
+		C.send(conn,wpk)
+	end
+	
+	
+	local function registerRpcFunction(name,func)
+		rpc_function[name] = func
+	end
+	
+	
+	local function RPC_CALL(_,rpk,conn)
+		local funcname = rpk_read_string(rpk)
+		print("RPC_CALL:" .. funcname)
+		local rpcHandle = Cjson.decode(rpk_read_string(rpk))
+		rpcHandle.conn = conn
+		local func = rpc_function[funcname]
+		if func then
+			--todo use pcall
+			local ret,err = func(rpcHandle)		
+			if err then
+				C.syslog(LOG_ERROR,"on rpccall:" .. funcname .. ":" .. err)
+				rpcResponse(rpcHandle,nil,err)
+			end		
+		else
+			rpcResponse(rpcHandle,nil,"unknow function:" .. func)
+		end
+	end
+	
+	local function	RPC_RESPONSE(_,rpk,conn)
+		local response = Cjson.decode(rpk_read_string(rpk))
+		local conn_pending_rpc = pending_rpc[conn]
+		if conn_pending_rpc then
+			local callbackObj = conn_pending_rpc[response.rpcno]
+			if callbackObj then
+				callbackObj.OnRPCResponse(callbackObj,response.ret,response.err)
+			end
+		end
+	end
+	
+	local function  onDisconnect(conn)
+		local conn_pending_rpc = pending_rpc[conn]
+		if conn_pending_rpc then
+			for k,v in ipairs(conn_pending_rpc) do 
+				v.OnRPCResponse(v,nil,"connection loss")
+			end
+			pending_rpc[conn] = nil
+		end
+	end
+	
+	local function reg_cmd_handler()
+		print("rpc reg_cmd_handler")
+		C.reg_cmd_handler(CMD_RPC_CALL,{handle=RPC_CALL})
+		C.reg_cmd_handler(CMD_RPC_RESPONSE,{handle=RPC_RESPONSE})
+	end
+	
+	return {
+		RegHandler = reg_cmd_handler,
+		RPCCall = rpcCall,
+		RPCResponse = rpcResponse,
+		RegisterRpcFunction = registerRpcFunction,
+		OnDisconnect = onDisconnect,
+	}
+
+rpc模块注册了两个消息`CMD_RPC_CALL`和`CMD_RPC_RESPONSE`，各自的处理函数分别是`RPC_CALL`和`RPC_RESPONSE`.
+
+
+###RPC
+
+RPC使用限制是通讯双方的协议处理均由lua实现.就目前来说group<->game之间可以进行RPC通讯,group<->gate,game<->gate,均无法使用RPC通讯方式.
+
+RPC提供方通过`RegisterRpcFunction`注册服务函数.
+
+例如如下函数:
+
+	Rpc.RegisterRpcFunction("EnterMap",function (rpcHandle)
+		local param = rpcHandle.param
+		local mapid = param[1]
+		local maptype = param[2]
+		local plys = param[3]
+		local gameids
+		if not mapid then
+			--创建实例
+			mapid = game.freeidx:pop()
+			if not mapid then
+				--通知group,gameserver繁忙
+				rpcResponse(rpcHandle,nil,"busy")
+			else
+				local map = Map.NewMap():init(mapid,maptype)
+				game.maps[mapid] = map
+				gameids = map:entermap(rpk)
+				if gameids then
+					--通知group进入地图失败
+					Rpc.rpcResponse(rpcHandle,nil,"failed")
+				end
+			end
+		else
+			local map = game.maps[mapid]
+			if not map then
+				--TODO 通知group错误的mapid(可能实例已经被销毁)
+				Rpc.rpcResponse(rpcHandle,nil,"instance not found")
+			else
+				gameids = map:entermap(rpk)
+				if not gameids then
+					--通知group进入地图失败
+					Rpc.rpcResponse(rpcHandle,nil,"failed")
+				end
+			end
+		end
+		--将成功进入的mapid返回给调用方
+		Rpc.rpcResponse(rpcHandle,{mapid,gameids},nil)	
+	end)
+
+其中的参数rpcHandle包含了调用上下文和远端传过来的调用参数.服务方可通过`rpcResponse`将调用结果返回给调用方.
+
+下面是调用方的示例:
+
+	local function enterMap(ply,type)
+		--暂时不处理需要配对进入的地图类型
+		local m = getInstanceByType(type,1)
+		if not m then
+			return false
+		end	
+		local mapid = m[2]
+		local game = m[1]
+		local gate = Gate.getGateByConn(ply.gate.conn)	
+		local paramply = {
+			chaname=plychaname,
+			gate = {name=gate.name,id=ply.gate.id},
+			groupid = ply.groupid,
+		}
+		local param = {paramply}
+		local callbackObj = {OnRPCResponse=function (_,ret,err)
+			if err then	
+			
+			else
+				if mapid == 0 then
+					mapid = ret[1]
+					addInstance(game,type,mapid,32,1)
+				else
+					addMapPlyCount(type,mapid,1)
+					addGamePlyCount(game,1)
+				end
+				ply.game = {conn=game.conn,id=ret[2][1]}
+				Game.insertGamePly(ply,game)	
+			end
+			ply.status = stat_playing
+		end}
+		return Rpc.RPCCall(game,"EnterMap",param,callbackObj)
+	end
+
+调用方需要定义一个`callbackObj`对象,并为此对象定义`OnRPCResponse`函数,如果调用成功传递给
+`OnRPCResponse`的`err`参数为空,否则`err`描述了错误原因.调用的返回值保存在`ret`参数中.
+
+
+###数据库的访问
+
+目前服务器仅支持一种数据库访问方式，异步redis访问.
+
+下面贴出一个从数据库中导入玩家属性的示例:
+
+	local cmd = "hmget chaid:" .. chaid .. " attr"
+	local err = Dbmgr.DBCmd(chaid,cmd,{callback = load_chainfo_callback,ply=ply})
+
+	function load_chainfo_callback(self,error,result)
+		print("load_chainfo_callback")
+		if error then
+			print("error")
+			notifybusy(self.ply)
+			return
+		end
+		
+		if not result then
+			--通知客户端创建用户
+			notifycreate(self.ply)
+			return 
+		end
+		
+		local ply = self.ply	
+		ply.attr =  Cjson.decode(result[1])
+		print("notify begply")
+		notifybegply(ply)
+	end
+
+
+对项目感兴趣的朋友可以[关注:](https://github.com/sniperHW/Survive)
+
