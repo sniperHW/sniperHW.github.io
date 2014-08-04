@@ -114,6 +114,6 @@ A的邮箱发送消息时就可能访问已经销毁的对象.
 
 而`MODE_FAIR`下,`on_events_fair`每次仅从线程邮箱中弹出一个消息并处理.之后重新回到消息分发器中，让其它事件有执行的机会.
  
-完整的源码请查看:https://github.com/sniperHW/KendyNet/blob/master/refactoring/src/kn_thread_mailbox.c
+完整的源码请查看:https://github.com/sniperHW/distri.lua/blob/master/refactoring/KendyNet/src/kn_thread_mailbox.c
 
 
