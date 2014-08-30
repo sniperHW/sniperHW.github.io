@@ -1,0 +1,233 @@
+最近在为distri.lua实现一个lua调试系统,有一个简单的需求,lua导入一个文件的时候,将这个文件的文件名记录下来,
+以方便调试器在设置断点的时候判断是否一个合法的文件.
+
+lua导入文件是通过luaL_loadfilex实现的,一个简单的思路就是修改luaL_loadfilex,在luaL_loadfilex中调用一个外部定义的函数将导入的文件名传给那个外部函数，由它记录下来.
+但这种侵入式的方案，除非在逼不得已的情况下不应该使用.
+
+另一个思路是hook luaL_loadfilex,在运行时用另外一个函数替换luaL_loadfilex,由这个替换函数去记录下需要的信息
+然后在跳转回原luaL_loadfilex的执行流程上.
+
+与是我从[decode](https://github.com/unknownworlds/decoda.git)中提取除了Hook.h,Hook.c稍加调整以适应Linux系统.
+
+
+hook的原理很简单:
+    
+        * 首先,使用mprotect将luaL_loadfilex所在代码段设置为可读/可写/可执行,以避免在修改代码时出现段访问异常
+        
+        * 之后需要把luaL_loadfilex最前面的一段指令替换成一个跳转指令,跳转到替换函数中去执行.为了在替换函数执行
+        完之后可以正确的回到luaL_loadfilex的正常执行路径上,需要把luaL_loadfilex中被替换部分的指令保存下来,然后
+        在后面再添加一条跳转指令,调到luaL_loadfilex后面的执行路径去.
+        
+被替换掉的指令布局和执行流程如下图:
+
+        luaL_loadfilex:
+                 jmp hook
+                 -------------
+                 其余指令  <----------------------------------------------------|
+                                                                                                    |
+        hook:                                                                                  |
+                执行必要的记录                                                         |
+                --保存的代码----                                                         |
+                luaL_loadfilex中被替换的指令                                 |
+                jmp其余指令--------------------------------------------------|                      
+        
+
+HookFunction实现如下:
+
+        void* HookFunction(void* function, void* hook)
+        {
+        
+            // Don't allow rehooking of the same function since that screws things up.
+        
+            assert(!GetIsHooked(function, hook));
+        
+            if (GetIsHooked(function, hook))
+            {
+                return NULL;
+            }
+        
+            // Missing from windows.h
+            //#define HEAP_CREATE_ENABLE_EXECUTE 0x00040000
+        
+            // Jump instruction is 5 bytes.
+            const int jumpSize = 5;
+        
+            // Compute the instruction boundary so we don't override half an instruction.
+            int boundary = GetInstructionBoundary(function, jumpSize);
+            
+            size_t pagesize = sysconf(_SC_PAGE_SIZE);
+            unsigned char* trampoline = NULL;
+            trampoline = (unsigned char*)/*aligned_alloc*/memalign(pagesize,pagesize);
+        	if(mprotect(trampoline, pagesize, PROT_WRITE|PROT_READ|PROT_EXEC)){
+        		free(trampoline);
+        		return NULL;
+        	}
+        
+            // Copy the original bytes to the trampoline area and append a jump back
+            // to the original function (after our jump).
+        
+            memcpy(trampoline, function, boundary);
+            AdjustRelativeJumps(trampoline, boundary, ((unsigned char*)function) - trampoline);
+        
+            WriteJump(trampoline + boundary, ((unsigned char*)function) + boundary);
+        
+        	void *ptr = (void*)(((size_t)function/pagesize)*pagesize);
+            // Give ourself write access to the region.
+            if(!mprotect(ptr, pagesize, PROT_WRITE|PROT_READ|PROT_EXEC))
+            {
+                // Fill the area with nops and write the jump instruction to our
+                // hook function.
+                memset(function, 0x90, boundary);
+                WriteJump(function, hook);
+        
+                // Restore the original protections.
+                //VirtualProtect(function, boundary, protection, &protection);
+        		mprotect(ptr, pagesize, PROT_READ|PROT_EXEC);
+                // Flush the cache so we know that our new code gets executed.
+                //FlushInstructionCache(GetCurrentProcess(), NULL, NULL);
+        
+                return trampoline;
+                //return 0;
+            
+            }    
+        
+        	free(trampoline);
+        	return NULL;
+        	
+            //return -1;        
+        }
+        
+本以为一切就这样结束了,运行程序的时候,正确的进入了替换函数,但在执行完记录操作要回到luaL_loadfilex后续执行流程的时候程序
+挂了,报段访问异常.
+
+为啥呢,我们看下WriteJump的实现:
+
+    /**
+     * Writes a relative jmp instruction.
+     */
+    void WriteJump(void* dst, void* address)
+    {
+        
+        unsigned char* jump = (unsigned char*)(dst);
+    
+        // Setup a jump instruction.
+        jump[0] = 0xE9;
+        *((unsigned long*)(&jump[1])) = (unsigned long)(address) - (unsigned long)(dst) - 5;
+    
+    }
+    
+使用的是E9跳转指令+4字节的立即数做相对rip计数器的跳转.这在32位程序下这是没问题的,因为trampoline和luaL_loadfilex的位移差必定
+在4字节的范围内.但我程序的运行环境是64位的,这个时候程序就出问题了, trampoline和luaL_loadfilex的位移差已经超过4个字节.这就导致
+ [jmp其余指令]跳转到到错误的地址上了.
+ 
+
+如何解决这个问题:
+
+    *   用FF指令做跳转,但这个方案要修改的地方就多了,除了` WriteJump`,还有`AdjustRelativeJumps`并且还会导致指令长度变长.
+    
+    *   用static数据区保存luaL_loadfilex中被替换的指令,使得位移差被控制在4字节以内.
+    
+针对我的需求，我选择了方案2,下面是修改过的HookFunction和WriteJump以及使用示例:
+
+        /**
+         * Writes a relative jmp instruction.
+         */
+        void WriteJump(void* dst, void* address)
+        {
+            
+            unsigned char* jump = (unsigned char*)(dst);
+        
+            // Setup a jump instruction.
+            jump[0] = 0xE9;
+            *((unsigned int*)(&jump[1])) = (unsigned int)((unsigned long)(address) - (unsigned long)(dst) - 5);
+        
+        }
+
+        void* HookFunction(void* function, void* hook,void *saveaddr,size_t saveaddr_size)
+        {
+        
+            // Don't allow rehooking of the same function since that screws things up.
+        
+            assert(!GetIsHooked(function, hook));
+        
+            if (GetIsHooked(function, hook))
+            {
+                return NULL;
+            }
+        
+            // Missing from windows.h
+            //#define HEAP_CREATE_ENABLE_EXECUTE 0x00040000
+        
+            // Jump instruction is 5 bytes.
+            const int jumpSize = 5;
+        
+            // Compute the instruction boundary so we don't override half an instruction.
+            int boundary = GetInstructionBoundary(function, jumpSize);
+            
+            if(saveaddr_size < (size_t)boundary) return NULL;
+            
+            size_t pagesize = sysconf(_SC_PAGE_SIZE);
+        	if(mprotect(saveaddr, boundary, PROT_WRITE|PROT_READ|PROT_EXEC)){
+        		//free(trampoline);
+        		return NULL;
+        	}
+        
+            // Copy the original bytes to the trampoline area and append a jump back
+            // to the original function (after our jump).
+        
+            memcpy(saveaddr, function, boundary);
+            AdjustRelativeJumps(saveaddr, boundary, ((unsigned char*)function) - (unsigned char*)saveaddr);
+        
+            WriteJump(saveaddr + boundary, ((unsigned char*)function) + boundary);
+        
+        	void *ptr = (void*)(((size_t)function/pagesize)*pagesize);
+            // Give ourself write access to the region.
+            if(!mprotect(ptr, pagesize, PROT_WRITE|PROT_READ|PROT_EXEC))
+            {
+                // Fill the area with nops and write the jump instruction to our
+                // hook function.
+                memset(function, 0x90, boundary);
+                WriteJump(function, hook);
+        
+                // Restore the original protections.
+                //VirtualProtect(function, boundary, protection, &protection);
+        		mprotect(ptr, pagesize, PROT_READ|PROT_EXEC);
+                // Flush the cache so we know that our new code gets executed.
+                //FlushInstructionCache(GetCurrentProcess(), NULL, NULL);
+        
+                return saveaddr;
+                //return 0;
+            
+            }    
+        
+        	return NULL;
+        	
+            //return -1;
+        
+        }
+ 
+ 
+ ////使用示例
+ 
+        int (*ori_luaL_loadfilex)(lua_State *L, const char *filename,const char *mode) = NULL;
+
+        int my_luaL_loadfilex(lua_State *L, const char *filename,const char *mode){
+        	printf("%s\n",filename);//记录导入的lua文件，供调试器使用
+        	return ori_luaL_loadfilex(L,filename,mode);
+        }
+        
+        static char luaL_loadfilex_buf[4096] __attribute__((aligned(4096)));
+        
+        int debug_init(){
+        	ori_luaL_loadfilex = HookFunction(luaL_loadfilex,my_luaL_loadfilex,luaL_loadfilex_buf,4096);
+        	if(!ori_luaL_loadfilex){
+        		return -1;
+        	}	
+        	return 0;
+        }
+ 
+
+
+   
+                
+        
