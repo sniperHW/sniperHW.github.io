@@ -2,7 +2,7 @@
 .sidebar {
     position: fixed;
     top: 80px;
-    width: 200px;
+    width: 180px;
 }
 
 .sidebar .nav > li > a {
