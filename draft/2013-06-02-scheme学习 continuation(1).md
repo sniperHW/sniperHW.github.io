@@ -1,3 +1,5 @@
+<img src="http://chart.googleapis.com/chart?cht=tx&chl=\Large x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}" style="border:none;">
+
 首先看下continuation在TPSL中的定义:
 
 Scheme在对一个表达式求值的时候需要跟踪两样东西:

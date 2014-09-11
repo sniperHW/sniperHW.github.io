@@ -21,7 +21,7 @@
     > (search-element 3 '(1 2 3 4))
     #t
     > (search-element 0 '(1 2 3 4))
-    #t
+    #f
 
 首先必须先介绍`call/cc`,它的作用是捕获当前的延续.下面是TSPL中对`call/cc`的介绍:
 
