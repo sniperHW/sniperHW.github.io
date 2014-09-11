@@ -1,3 +1,9 @@
+
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=default"></script>
+
+$$x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}$$
+\\(x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}\\)
+
 首先看下continuation在TPSL中的定义:
 
 Scheme在对一个表达式求值的时候需要跟踪两样东西:
