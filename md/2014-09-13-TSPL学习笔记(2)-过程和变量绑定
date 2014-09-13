@@ -1,0 +1,173 @@
+
+####变量的引用
+
+#####语法: variable
+
+#####返回: variable的值
+
+如果在某个范围内存在对某个标识符的变量绑定,那么当这个标识符以表达式的形式出现的时候被认为是其所绑定变量的值.
+
+在引用一个标识符的时候，如果这个标识符没有被绑定为变量,关键字,记录名或其它的实体那么解释器/编译器将会报语法错误.定义(通过define表达式)的有效范围是整个域(例如lambda表达式的整个body),所以只要引用定义的地方没有对定义求值则相关的定义不必出现在它被引用之前.例如:
+
+    (define f
+      (lambda (x)
+        (g x)))
+    (define g
+      (lambda (x)
+        (+ x x)))
+        
+`g`的定义出现在对它的引用`(g x)`之后,但定义`f`的时候并不对`(g x)`求值所以上述代码是合法的.
+
+而下面的代码则是非法的:
+
+    (define q (g 3))
+    (define g
+      (lambda (x)
+        (+ x x)))
+        
+因为在`q`的定义中需要对`g`求值,而在这个位置上`q`的定义还没完成.
+
+
+####Lambda
+
+#####语法:(lambda formals body1 body2 ...)
+#####返回:一个过程
+#####库:(rnrs base),(rnrs)
+
+lambda语法形式用于创建过程.任何创建过程或建立局部变量绑定的语法形式最终都是通过一系列的lambda或case-lambda语句实现的.
+
+在lambda语句中,出现在`formals`中的变量都是过程参数,`body1,body2 ...`组成了过程的body.
+
+形参实参绑定:
+
+* 如果`formals`是一个完整的由变量组成的`list`,例如:(x y x),则每个变量分别与其对应的实参绑定，实参的数量太多或太少都会引发异常
+* 如果`formals`是一个单一的变量,例如：z,则所有实参形成一个list与z绑定.
+* 如果`formals`不是一个完整的`list`,例如:(x y . z),则相应的实参绑定到x,y,其余实参形成一个list与z绑定.如果实参数量太少会引发异常.
+
+当body被求值的时候,body中的表达式会按顺序被求值,而最后一个表达式的求出的值作为过程的返回值被返回.
+
+####Case-Lambda
+
+Scheme的lambda不能直接支持不同参数数量的过程定义重载,要实现这个重载定义需要使用`case-Lambda`.
+
+####语法: (case-lambda clause ...)
+####返回: 一个过程
+####库: (rnrs control) , (rnrs)
+
+一个case-lambda表达式由一系列的子句组成,每一条子句都与lambda表达式类似:
+
+	[formals body1  body2  ...]
+    
+由case-lambda表达式创建的过程被调用的时候,按字句定义的顺序将其`formals`与实参匹配,匹配规则与lambda创建的过程一样,第一个被匹配成功的子句会被求值,如果没有一个子句匹配成功会引发异常.
+
+例如下面是一个case-lambda的例子:
+
+    (define make-list
+      (case-lambda
+        [(n) (make-list n #f)]
+        [(n x)
+         (do ([n n (- n 1)] [ls '() (cons x ls)])
+             ((zero? n) ls))]))
+
+####局部绑定
+
+#####语法: (let ((var expr) ...) body1  body2  ...)
+#####返回: 最后一个body表达式的值
+#####库: (rnrs base) , (rnrs)
+
+let表达式建立局部变量绑定,var被绑定为expr求的值,在let表达式的body内可以引用var.let表达式的body由一系列的`body 1  body 2  ...`子句组成,其求值计算与lambda一样.
+
+`let`与`let*`,`letrec`,`letrec*`的主要区别在于,var在expr的作用域内是不可见的,所以在expr中引用var是非法的.
+
+`let`,`letrec`和`let*`,`letrec*`的区别在于,如果有多个`(var expr)`,前两者对`expr`的求值顺序是不确定的,而后两者严格按照从左到右的顺序对`expr`求值.
+
+`let`是一种扩展语法其语法定义如下:
+
+    (define-syntax let
+      (syntax-rules ()
+        [(_ ((x e) ...) b1 b2 ...)
+         ((lambda (x ...) b1 b2 ...) e ...)]))
+
+#####语法: (let* ((var expr) ...) body1  body2  ...)
+#####返回: 最后一个body表达式的值
+#####库: (rnrs base) , (rnrs)
+
+如上所述,与let唯一的区别在于`expr`的求值顺序.
+
+任何的`let*`表达式都可以转化为用嵌套的`let`表达式实现:
+
+    (define-syntax let*
+      (syntax-rules ()
+        [(_ () e1 e2 ...)
+         (let () e1 e2 ...)]
+        [(_ ((x1 v1) (x2 v2) ...) e1 e2 ...)
+         (let ((x1 v1))
+           (let* ((x2 v2) ...) e1 e2 ...))]))
+
+#####语法: (letrec ((var expr) ...) body 1  body 2  ...)
+#####返回: 最后一个body表达式的值
+#####库: (rnrs base) , (rnrs)
+
+`letrec`与`let`和`let*`的唯一区别在于var在expr中是可见的,所以可以在expr中递归的引用var,例如:
+
+    (letrec ([sum (lambda (x)
+                    (if (zero? x)
+                        0
+                        (+ x (sum (- x 1)))))])
+      (sum 5)) -> 15
+      
+      
+#####语法: (letrec* ((var expr) ...) body1  body2  ...)
+#####返回: 最后一个body表达式的值
+#####库: (rnrs base) , (rnrs)
+
+与`letrec`类似只是`expr`的求值顺序严格按照从左往右执行.
+
+####多值局部绑定
+
+#####语法: (let-values ((formals expr) ...) body1  body2  ...)
+#####语法: (let*-values ((formals expr) ...) body1  body2  ...)
+#####返回: 最后一个body表达式的值
+#####库: (rnrs base) , (rnrs)
+
+`let-values`和`let*-values`可以方便的为`formals`中的变量绑定值,例如:
+
+    (let-values ([(a b) (values 1 2)] [c (values 1 2 3)])
+      (list a b c)) -> (1 2 (1 2 3))
+      
+a被与1绑定,b与2绑定,c与(1 2 3)绑定.
+
+上述代码还可以改成如下等价形式:
+
+     (let-values ([(a b c) (values 1 2 (list 1 2 3))])
+            (list a b c))
+
+
+####变量定义
+
+#####语法: (define var expr)
+#####语法: (define var)
+#####语法: (define (var0  var1  ...) body1  body2  ...)
+#####语法: (define (var0  . varr ) body1  body2  ...)
+#####语法: (define (var0  var1  var2  ... . varr ) body1  body2  ...)
+#####库: (rnrs base) , (rnrs)
+
+第一种语法形式将var与expr绑定,第二种等价于`(define var unspecified)`其余的分别等价于:
+
+    (define var0
+      (lambda (var1 ...)
+        body1  body2  ...))
+
+    (define var0
+      (lambda varr
+        body1  body2  ...))
+
+    (define var0
+      (lambda (var1 var2 ... . varr)
+        body1  body2  ...))    
+
+####赋值
+
+#####语法: (set! var expr)
+#####返回: 未定义
+#####库: (rnrs base) , (rnrs)
