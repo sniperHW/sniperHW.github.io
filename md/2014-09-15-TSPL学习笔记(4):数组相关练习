@@ -1,0 +1,110 @@
+最近研究函数式编程,都是haskell和scheme交互着看的,所以笔记中两种语言的内容都有,练习一般也都用两种语言分别实现.
+本篇练习一些数组有关的问题,之所以与数组相关是因为在命令式编程中以下问题的核心数据结构主要是数组,而在scheme和haskell中主要是用list来实现.
+
+####迷宫
+
+给定一个迷宫地图,输入起始点和目标点，输出一条从起始点到目标点的路径,首先来看下scheme的代码
+
+    (define maze1  '((1 1 1 1 1 1 1 1 1)
+                    (1 0 1 0 0 0 1 0 1)
+                    (1 0 1 0 1 0 1 0 1)
+                    (1 0 1 0 1 0 1 0 1)
+                    (1 0 0 0 0 0 0 0 1)
+                    (1 1 1 1 1 1 1 1 1)))
+
+    (define (findpath-one maze from to)
+        (define (member xs x) ;用于判断一个点是否在close表中
+            (cond
+                [(null? xs) #f]
+                [else (let ([fst (car (car xs))]
+                            [snd (cadr (car xs))])
+                       (if (and (= fst (car x)) (= snd (cadr x))) #t      
+                        (member (cdr xs) x)))]))
+        (letrec* ( [direction '((0 -1) (0 1) (-1 0) (1 0))]			
+                   [arrive (lambda (cur) (and (= (car cur) (car to)) (= (cadr cur) (cadr to))))]
+                   [moveable  (lambda (x y) ;检测是否可移动,坐标越界或数组的值不为0表示不可移动
+                                 (cond
+                                    [(> y (length maze)) #f]
+                                    [else (let ([line (list-ref maze y)]) 
+                                           (if (> x (length line)) #f (= (list-ref line x) 0)))]))]
+                   [foreach-dir (lambda (dirs pos path close)
+                                   (cond
+                                     [(null? dirs) '()]
+                                     [else (let* ([dir (car dirs)]
+                                                  [dirx (car dir)]
+                                                  [diry (cadr dir)]     
+                                                  [nextpos (list (+ (car pos) dirx) (+ (cadr pos) diry))]
+                                                  [ret (move nextpos path close)])							 
+                                            (if (not (null? ret)) ret (foreach-dir (cdr dirs) pos path close)))]))]
+                   [move (lambda (pos path close) 
+                            (if (arrive pos) (reverse (cons pos path))
+                                (if (or (not (moveable (car pos) (cadr pos))) (member close pos)) '()
+                                    (foreach-dir direction pos (cons pos path) (cons pos close)))))])
+               (cond
+                    [(arrive from) (list from)]
+                    [(or (not (moveable (car from) (cadr from))) (not (moveable (car to) (cadr to)))) '()]
+                    [else (foreach-dir direction from (list from) (list from))])))
+                    
+使用经典的回溯算法,从当前点出发,遍历`direction`中的四个方向,如果往一个方向前进的时候遇到阻挡,则回溯到上一层去尝试下一个方向。如果方向用完了则表明从当前点无法到达目标,继续回溯到上一层.如果回溯到第一层且方向用完表明从起始点没有到达目标点的路径.这里用了一个辅助的数据结构close表,用于保存已经走过的路径,用于避免路径探测的时候走回头路导致死循环.
+                    
+                            
+                            
+接着来看下haskell的版本
+
+    import qualified Data.Set as Set
+    -- 走迷宫
+    --module Maze   
+    --( 
+    --  FindOne   
+    --) where
+
+    --返回指定下标的元素
+    elemat :: [maybe] -> Int -> maybe			
+    elemat xs idx = 
+            if idx >= length xs then error "index out of range"
+            else fetch xs 0
+        where fetch (x:xs) acc = 
+            if acc == idx then x
+            else fetch xs (acc+1)	
+
+    -- 检查输入点是否可移动
+    movable ::[[Int]] -> (Int,Int) -> Bool
+    movable maze (x,y) =  
+            if y < length maze then 
+                let line = elemat maze y
+                in if x < length line then
+                    elemat line x == 0
+                else False   
+            else False
+
+    -- 输出一条路径
+    findonepath :: [[Int]] -> (Int,Int) -> (Int,Int) -> [(Int,Int)]
+    findonepath maze from to
+        | not (movable maze from) || not (movable maze to) = []
+        | otherwise = foreachdir direction from [from] $ Set.fromList [] 
+        where 
+              direction = [(0,-1),(0,1),(-1,0),(1,0)] -- 4个移动方向
+              foreachdir dirs (x,y) path close
+                | null dirs = []
+                | otherwise = 
+                  let 
+                        (dirx,diry) = head dirs  
+                        nextpos = (x+dirx,y+diry) 	
+                        ret = move path close nextpos
+                  in 
+                        if null ret then
+                            foreachdir (tail dirs) (x,y) path close
+                        else ret					
+              move path close (x,y)
+                | (x,y) == to = reverse ((x,y):path) --到达目的地 
+                | otherwise = 
+                    if Set.member (x,y) close || not (movable maze (x,y)) then []
+                    else foreachdir direction (x,y) ((x,y):path) $ Set.insert (x,y) close
+                    
+                    
+与scheme版本区别的地方有两点:
+
+* 没有list-ref方法,所以定义了一个辅组函数elemat用于取给定下标的list元素
+* 使用Data.Set作为close列表的数据结构
+
+####(待续)

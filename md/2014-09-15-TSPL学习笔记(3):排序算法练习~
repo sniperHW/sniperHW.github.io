@@ -115,31 +115,3 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
 
 pass过程相当于上面文字描诉的第一步,接着的局部函数iter对应了文字描诉的2,3步.参数result用于存放排序后的结果.第一次调用时结果为'(),剩余元素就是输入列表.然后调用pass将list分成两部分left和max.如果left的长度为0,相当于到达终止条件数组长度==1,将max添加到result中然后返回.
 否则继续在left上执行递归.
-
-对应的haskell版本:
-
-    bubble :: (Ord a) => [a] -> [a]
-    bubble []  = error "Can't call pass on an empty list, dummy!"
-    bubble (x:[]) = [x]
-    bubble xs = iter xs []
-           where 
-            pass xs left		
-                | size == 2 = if first < second then (first:left,second)
-                                 else (second:left,first)
-                | size > 2 =  let remain = tail (tail xs) in
-                              if first < second then pass (second:remain) (first:left)
-                                 else pass (first:remain) (second:left)
-                | size == 1 = ([],first)				   					 
-                where 
-                      size  = length xs
-                      first = head xs
-                      second = head (tail xs)				  	   	   
-            iter xs result =
-                let 
-                    passret = (pass xs [])
-                    left = fst passret
-                    max = snd passret 
-                in 
-                    if length left == 0 then (max:result)
-                else iter left (max:result)
-
