@@ -193,31 +193,22 @@ member?函数用于判断一个x在xs中是否存在,此函数在下面的几个
 					 (cond [(= x (car pos)) #f]
 						   [(= (abs (- x (car pos))) (abs (- y (cadr pos)))) #f]
 						   [else (check (cdr xs))]))))
-			(check queen)) 	      
-		(define (foreach-row x y queen)
+			(check queen))
+		(define (foreach-row x y queen result)
 			(cond 
-				  [(>= x size) '()]
-				  [(>= y size) queen]
-				  [(not (vaild? queen (list x y))) (foreach-row (+ x 1) y queen)];尝试右边一个位置
-				  [else (let ([ret (foreach-row 0 (+ y 1) (cons (list x y) queen))]);下一行
-							 (if (not (null? ret)) ret ;得到结果
-								(foreach-row (+ x 1) y queen)))]));尝试下一个位置
-		(let* ([queen (foreach-row 0 0 '())]
-			   [matrix (gen-matrix size size (lambda (x y) (if (member? queen (list x y)) '* " ")))])
-			   (show-matrix matrix)))
-	
-如果要输出所有的解,只要将`(define (foreach-row x y queen)`及以下的代码替换成
-
-	(define (foreach-row x y queen)
-		(cond 
-			  [(>= x size) '()]
-			  [(>= y size) queen]
-			  [(not (vaild? queen (list x y))) (foreach-row (+ x 1) y queen)];尝试右边一个位置
-			  [else (let* ([ret (foreach-row 0 (+ y 1) (cons (list x y) queen))]);下一行
-						 (if (not (null? ret))( begin (display "----result-----\n")
-							(show-matrix (gen-matrix size size (lambda (x y)
-															     (if (member? ret (list x y)) '* " "))))))
-						 (foreach-row (+ x 1) y queen))]))
-	(foreach-row 0 0 '()))
+				  [(>= x size) result]
+				  [(>= y size) (cons queen result)]
+				  [else (let ([newresult (if (vaild? queen (list x y))
+											 (foreach-row 0 (+ y 1) (cons (list x y) queen) result) 		 
+											 result)])
+							  (foreach-row (+ x 1) y queen newresult))]))
+		(let ([result (foreach-row 0 0 '() '())])
+			 (define (show xs)
+				(if (not (null? xs))
+					(begin (display "------result-------\n")
+					(show-matrix (gen-matrix size size (lambda (x y) (if (member? (car xs) (list x y)) '* " "))))
+					(show (cdr xs)))))				    
+			 (show result)
+			 (display "total solution:")(display (length result))(display "\n")))
 
 
