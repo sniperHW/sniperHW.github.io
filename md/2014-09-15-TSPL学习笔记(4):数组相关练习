@@ -182,97 +182,29 @@ member?函数用于判断一个x在xs中是否存在,此函数在下面的几个
 * 进入下一行,如果当前行号大于等于N,输出一个结果,否则执行步骤1
 
 
-在解题之前先定义几个辅助函数:
-
-	(define (gen-y pos e)
-		(define (iter x y out)
-			(if (>= y e) out
-				(iter x (+ y 1) (cons (list x y) out))))
-		(iter (car pos) 0 '()) 		
-	)
-	(define (gen-right-slant pos e)
-		(define (gen-up pos result)
-			(let ([x (car pos)]
-				  [y (cadr pos)])
-				  (if (or (> 0 x) (> 0 y)) result
-				  (gen-up (list (- x 1) (- y 1)) (cons pos result)))))
-		(define (gen-down pos result)
-			(let ([x (car pos)]
-				  [y (cadr pos)])	
-				  (if (or (<= e x) (<= e y)) result
-					(gen-down (list (+ x 1) (+ y 1)) (cons pos result)))))	
-		(gen-down (list (+ (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (- (car pos) 1) (- (cadr pos) 1)) '())))
-	(define (gen-left-slant pos e)
-		(define (gen-up pos result)
-			(let ([x (car pos)]
-				  [y (cadr pos)])
-				 (if (or (>= x e) (> 0 y)) result
-					(gen-up (list (+ x 1) (- y 1)) (cons pos result)))))
-		(define (gen-down pos result)
-			(let ([x (car pos)]
-				  [y (cadr pos)])
-				 (if (or (> 0 x) (>= y e)) result
-					(gen-down (list (- x 1) (+ y 1)) (cons pos result)))))		      
-		(gen-down (list (- (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (+ (car pos) 1) (- (cadr pos) 1)) '())))
-	(define (gen-poss pos size)
-		(append (append (gen-left-slant pos size) (gen-right-slant pos size)) (gen-y pos size)))
-        
-这几个函数用于生成符合8皇后问题的检查点.
-`gen-y`输出y方向的检查点,`gen-right-slant`输出右斜向的检查点,`gen-left-slant`输出左斜方向的检查点,`gen-poss`用于将3种检查点合成道一个列表输出,例如,如果要检查(2 2)是否可以放置皇后,首先要调用`gen-poss`把检查点找出来,然后判断这些检查点上是否有皇后,如果有则不能放置,否则可以放置.
-
 下面是找出一个八皇后解的完整代码:
 
-    (define (puzzle size)
-        (define (gen-y pos e)
-            (define (iter x y out)
-                (if (>= y e) out
-                    (iter x (+ y 1) (cons (list x y) out))))
-            (iter (car pos) 0 '()) 		
-        )
-        (define (gen-right-slant pos e)
-            (define (gen-up pos result)
-                (let ([x (car pos)]
-                      [y (cadr pos)])
-                      (if (or (> 0 x) (> 0 y)) result
-                      (gen-up (list (- x 1) (- y 1)) (cons pos result)))))
-            (define (gen-down pos result)
-                (let ([x (car pos)]
-                      [y (cadr pos)])	
-                      (if (or (<= e x) (<= e y)) result
-                        (gen-down (list (+ x 1) (+ y 1)) (cons pos result)))))	
-            (gen-down (list (+ (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (- (car pos) 1) (- (cadr pos) 1)) '())))
-        (define (gen-left-slant pos e)
-            (define (gen-up pos result)
-                (let ([x (car pos)]
-                      [y (cadr pos)])
-                     (if (or (>= x e) (> 0 y)) result
-                        (gen-up (list (+ x 1) (- y 1)) (cons pos result)))))
-            (define (gen-down pos result)
-                (let ([x (car pos)]
-                      [y (cadr pos)])
-                     (if (or (> 0 x) (>= y e)) result
-                        (gen-down (list (- x 1) (+ y 1)) (cons pos result)))))		      
-            (gen-down (list (- (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (+ (car pos) 1) (- (cadr pos) 1)) '())))
-        (define (gen-poss pos size)
-            (append (append (gen-left-slant pos size) (gen-right-slant pos size)) (gen-y pos size)))	
-        (define (vaild? queen pos);判断当前位置是否可以放置皇后
-            (define check-poss (gen-poss pos size));需要检查的点
-            (define (check poss)
-                (if (null? poss) #t
-                    (if (member? queen (car poss)) #f
-                        (check (cdr poss)))))
-            (check check-poss))			
-        (define (foreach-row x y queen)
-            (cond 
-                  [(>= x size) '()]
-                  [(>= y size) queen]
-                  [(not (vaild? queen (list x y))) (foreach-row (+ x 1) y queen)];尝试右边一个位置
-                  [else (let ([ret (foreach-row 0 (+ y 1) (cons (list x y) queen))]);下一行
-                             (if (not (null? ret)) ret ;得到结果
-                                (foreach-row (+ x 1) y queen)))]));尝试下一个位置
-        (let* ([queen (foreach-row 0 0 '())]
-               [matrix (gen-matrix size size (lambda (x y) (if (member? queen (list x y)) '* " ")))])
-               (show-matrix matrix)))
+	(define (puzzle size)   
+		(define (vaild? queen pos);判断当前位置是否可以放置皇后
+			(define (check xs)
+				(if (null? xs) #t
+					(let ([x (car (car xs))]
+						  [y (cadr (car xs))])
+					 (cond [(= x (car pos)) #f]
+						   [(= (abs (- x (car pos))) (abs (- y (cadr pos)))) #f]
+						   [else (check (cdr xs))]))))
+			(check queen)) 	      
+		(define (foreach-row x y queen)
+			(cond 
+				  [(>= x size) '()]
+				  [(>= y size) queen]
+				  [(not (vaild? queen (list x y))) (foreach-row (+ x 1) y queen)];尝试右边一个位置
+				  [else (let ([ret (foreach-row 0 (+ y 1) (cons (list x y) queen))]);下一行
+							 (if (not (null? ret)) ret ;得到结果
+								(foreach-row (+ x 1) y queen)))]));尝试下一个位置
+		(let* ([queen (foreach-row 0 0 '())]
+			   [matrix (gen-matrix size size (lambda (x y) (if (member? queen (list x y)) '* " ")))])
+			   (show-matrix matrix)))
 	
 如果要输出所有的解,只要将`(define (foreach-row x y queen)`及以下的代码替换成
 
