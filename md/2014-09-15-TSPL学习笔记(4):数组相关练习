@@ -1,52 +1,118 @@
 最近研究函数式编程,都是haskell和scheme交互着看的,所以笔记中两种语言的内容都有,练习一般也都用两种语言分别实现.
 本篇练习一些数组有关的问题,之所以与数组相关是因为在命令式编程中以下问题的核心数据结构主要是数组,而在scheme和haskell中主要是用list来实现.
 
+scheme中没有数组这个数据结构,所以需要用list来实现类似数组的操作,下面首先定义了一些辅组函数用于操作和显示数组,
+
+    (define (gen-matrix width hight f)
+        (define (gen-row x y row matrix)
+            (if (>= x width) (cons (reverse row) matrix)
+                (gen-row (+ x 1) y (cons (f x y) row) matrix)))
+        (define (gen y matrix)
+            (if (>= y hight) matrix
+                (gen (+ y 1) (gen-row 0 y '() matrix))))
+        (reverse (gen 0 '())))
+
+    (define (show-matrix matrix)
+        (define (show-row row)
+            (if (not (null? row)) (begin (display (car row))(display "\n")(show-row (cdr row)))))
+        (show-row matrix))
+
+    (define (get-matrix-size matrix)
+        (if (null? matrix) '()
+            (if (null? (car matrix)) '()
+                (list (length (car matrix)) (length matrix)))))
+                
+`gen-matrix`用于生成一个`width X hight`的矩阵,f是一个形如`(lambda (x y))`的函数,用于输出x y位置的内容,例如:
+
+	(gen-matrix 4 4 (lambda (x y) (if (and (= x 2) (= y 2)) 1 0)
+   
+将生成一个(2 2)位置为1,其余位置为0的4X4矩阵.
+
+`show-matrix`用于将列表形式的矩阵以矩形的方式输出到屏幕,例如:
+
+	(show-matrix (gen-matrix 4 4 (lambda (x y) (if (and (= x 2) (= y 2)) 1 0))))
+    
+将输出
+
+    (0 0 0 0)
+    (0 0 0 0)
+    (0 0 1 0)
+    (0 0 0 0)
+
+`get-matrix-size`用于获得一个矩阵的width和hight其返回值是一个list,`(car list) = width (cadr list) = hight`
+
+
+    (define (member? xs x)
+        (cond
+            [(null? xs) #f]
+            [else (if (equal? x (car xs)) #t (member? (cdr xs) x))]))
+            
+member?函数用于判断一个x在xs中是否存在,此函数在下面的几个示例中用到.            
+
+
 ####迷宫
 
 给定一个迷宫地图,输入起始点和目标点，输出一条从起始点到目标点的路径,首先来看下scheme的代码
 
-    (define maze1  '((1 1 1 1 1 1 1 1 1)
-                    (1 0 1 0 0 0 1 0 1)
-                    (1 0 1 0 1 0 1 0 1)
-                    (1 0 1 0 1 0 1 0 1)
-                    (1 0 0 0 0 0 0 0 1)
-                    (1 1 1 1 1 1 1 1 1)))
+	(define maze1  '((1 1 1 1 1 1 1 1 1)
+					(1 0 1 0 0 0 1 0 1)
+					(1 0 1 0 1 0 1 0 1)
+					(1 0 1 0 1 0 1 0 1)
+					(1 0 0 0 0 0 0 0 1)
+					(1 1 1 1 1 1 1 1 1)))
 
-    (define (findpath-one maze from to)
-        (define (member xs x) ;用于判断一个点是否在close表中
-            (cond
-                [(null? xs) #f]
-                [else (let ([fst (car (car xs))]
-                            [snd (cadr (car xs))])
-                       (if (and (= fst (car x)) (= snd (cadr x))) #t      
-                        (member (cdr xs) x)))]))
-        (letrec* ( [direction '((0 -1) (0 1) (-1 0) (1 0))]			
-                   [arrive (lambda (cur) (and (= (car cur) (car to)) (= (cadr cur) (cadr to))))]
-                   [moveable  (lambda (x y) ;检测是否可移动,坐标越界或数组的值不为0表示不可移动
-                                 (cond
-                                    [(> y (length maze)) #f]
-                                    [else (let ([line (list-ref maze y)]) 
-                                           (if (> x (length line)) #f (= (list-ref line x) 0)))]))]
-                   [foreach-dir (lambda (dirs pos path close)
-                                   (cond
-                                     [(null? dirs) '()]
-                                     [else (let* ([dir (car dirs)]
-                                                  [dirx (car dir)]
-                                                  [diry (cadr dir)]     
-                                                  [nextpos (list (+ (car pos) dirx) (+ (cadr pos) diry))]
-                                                  [ret (move nextpos path close)])							 
-                                            (if (not (null? ret)) ret (foreach-dir (cdr dirs) pos path close)))]))]
-                   [move (lambda (pos path close) 
-                            (if (arrive pos) (reverse (cons pos path))
-                                (if (or (not (moveable (car pos) (cadr pos))) (member close pos)) '()
-                                    (foreach-dir direction pos (cons pos path) (cons pos close)))))])
-               (cond
-                    [(arrive from) (list from)]
-                    [(or (not (moveable (car from) (cadr from))) (not (moveable (car to) (cadr to)))) '()]
-                    [else (foreach-dir direction from (list from) (list from))])))
+	;返回一条路径				
+	(define (findpath-one maze from to)(define (findpath-one maze from to)
+	(letrec* ( [direction '((0 -1) (0 1) (-1 0) (1 0))]			
+			   [arrive? (lambda (cur) (and (= (car cur) (car to)) (= (cadr cur) (cadr to))))]
+			   [moveable?  (lambda (x y)
+							 (cond
+								[(> y (length maze)) #f]
+								[else (let ([line (list-ref maze y)]) 
+									   (if (> x (length line)) #f (= (list-ref line x) 0)))]))]
+			   [foreach-dir (lambda (dirs pos path close)
+							   (cond
+								 [(null? dirs) '()]
+								 [else (let* ([dir (car dirs)]
+											  [dirx (car dir)]
+											  [diry (cadr dir)]     
+											  [nextpos (list (+ (car pos) dirx) (+ (cadr pos) diry))]
+											  [ret (move nextpos path close)])							 
+										(if (not (null? ret)) ret (foreach-dir (cdr dirs) pos path close)))]))]
+			   [move (lambda (pos path close) 
+						(if (arrive? pos) (reverse (cons pos path))
+							(if (or (not (moveable? (car pos) (cadr pos))) (member? close pos)) '()
+								(foreach-dir direction pos (cons pos path) (cons pos close)))))])
+           (cond
+		   		[(arrive? from) (list from)]
+		   		[(or (not (moveable? (car from) (cadr from))) (not (moveable? (car to) (cadr to)))) '()]
+		    	[else (foreach-dir direction from (list from) (list from))])))
                     
 使用经典的回溯算法,从当前点出发,遍历`direction`中的四个方向,如果往一个方向前进的时候遇到阻挡,则回溯到上一层去尝试下一个方向。如果方向用完了则表明从当前点无法到达目标,继续回溯到上一层.如果回溯到第一层且方向用完表明从起始点没有到达目标点的路径.这里用了一个辅助的数据结构close表,用于保存已经走过的路径,用于避免路径探测的时候走回头路导致死循环.
-                    
+
+要想将结果显示在屏幕上可以定义如下函数:
+
+    (define (showmaze maze path)
+        (let ([matrix-size (get-matrix-size maze)])
+        (define matrix (gen-matrix (car matrix-size) (cadr matrix-size) (lambda (x y)
+            (if (member? path (list x y)) '*
+                (list-ref (list-ref maze y) x)))))
+        (show-matrix matrix))
+    )
+
+通过输入一个地图和路径就可以把寻路结果显示到屏幕中，例如:
+
+	(showmaze maze1 (findpath-one maze1 '(1 1) '(3 3)))
+    
+输出
+
+    (1 1 1 1 1 1 1 1 1)
+    (1 * 1 0 0 0 0 0 1)
+    (1 * 1 0 1 0 1 0 1)
+    (1 * 1 * 1 0 1 0 1)
+    (1 * * * 0 0 1 0 1)
+    (1 1 1 1 1 1 1 1 1)
+
                             
                             
 接着来看下haskell的版本
@@ -107,4 +173,119 @@
 * 没有list-ref方法,所以定义了一个辅组函数elemat用于取给定下标的list元素
 * 使用Data.Set作为close列表的数据结构
 
-####(待续)
+####八皇后
+
+八皇后问题也是一个经典的回溯算法问题,解题方法与迷宫问题类似:
+
+* 在当前行的0-N-1的位置中寻找一个合法位置放置皇后,如果找到跳到下面一步,否则说明在当前行的任何位置放置皇后都不能有合法的解,回溯到上一行,
+  如果已经回溯到了第一行,切尝试过第一行的所有位置,说明问题没有任何的合法解
+* 进入下一行,如果当前行号大于等于N,输出一个结果,否则执行步骤1
+
+
+在解题之前先定义几个辅助函数:
+
+	(define (gen-y pos e)
+		(define (iter x y out)
+			(if (>= y e) out
+				(iter x (+ y 1) (cons (list x y) out))))
+		(iter (car pos) 0 '()) 		
+	)
+	(define (gen-right-slant pos e)
+		(define (gen-up pos result)
+			(let ([x (car pos)]
+				  [y (cadr pos)])
+				  (if (or (> 0 x) (> 0 y)) result
+				  (gen-up (list (- x 1) (- y 1)) (cons pos result)))))
+		(define (gen-down pos result)
+			(let ([x (car pos)]
+				  [y (cadr pos)])	
+				  (if (or (<= e x) (<= e y)) result
+					(gen-down (list (+ x 1) (+ y 1)) (cons pos result)))))	
+		(gen-down (list (+ (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (- (car pos) 1) (- (cadr pos) 1)) '())))
+	(define (gen-left-slant pos e)
+		(define (gen-up pos result)
+			(let ([x (car pos)]
+				  [y (cadr pos)])
+				 (if (or (>= x e) (> 0 y)) result
+					(gen-up (list (+ x 1) (- y 1)) (cons pos result)))))
+		(define (gen-down pos result)
+			(let ([x (car pos)]
+				  [y (cadr pos)])
+				 (if (or (> 0 x) (>= y e)) result
+					(gen-down (list (- x 1) (+ y 1)) (cons pos result)))))		      
+		(gen-down (list (- (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (+ (car pos) 1) (- (cadr pos) 1)) '())))
+	(define (gen-poss pos size)
+		(append (append (gen-left-slant pos size) (gen-right-slant pos size)) (gen-y pos size)))
+        
+这几个函数用于生成符合8皇后问题的检查点.
+`gen-y`输出y方向的检查点,`gen-right-slant`输出右斜向的检查点,`gen-left-slant`输出左斜方向的检查点,`gen-poss`用于将3种检查点合成道一个列表输出,例如,如果要检查(2 2)是否可以放置皇后,首先要调用`gen-poss`把检查点找出来,然后判断这些检查点上是否有皇后,如果有则不能放置,否则可以放置.
+
+下面是找出一个八皇后解的完整代码:
+
+    (define (puzzle size)
+        (define (gen-y pos e)
+            (define (iter x y out)
+                (if (>= y e) out
+                    (iter x (+ y 1) (cons (list x y) out))))
+            (iter (car pos) 0 '()) 		
+        )
+        (define (gen-right-slant pos e)
+            (define (gen-up pos result)
+                (let ([x (car pos)]
+                      [y (cadr pos)])
+                      (if (or (> 0 x) (> 0 y)) result
+                      (gen-up (list (- x 1) (- y 1)) (cons pos result)))))
+            (define (gen-down pos result)
+                (let ([x (car pos)]
+                      [y (cadr pos)])	
+                      (if (or (<= e x) (<= e y)) result
+                        (gen-down (list (+ x 1) (+ y 1)) (cons pos result)))))	
+            (gen-down (list (+ (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (- (car pos) 1) (- (cadr pos) 1)) '())))
+        (define (gen-left-slant pos e)
+            (define (gen-up pos result)
+                (let ([x (car pos)]
+                      [y (cadr pos)])
+                     (if (or (>= x e) (> 0 y)) result
+                        (gen-up (list (+ x 1) (- y 1)) (cons pos result)))))
+            (define (gen-down pos result)
+                (let ([x (car pos)]
+                      [y (cadr pos)])
+                     (if (or (> 0 x) (>= y e)) result
+                        (gen-down (list (- x 1) (+ y 1)) (cons pos result)))))		      
+            (gen-down (list (- (car pos) 1) (+ (cadr pos) 1)) (gen-up (list (+ (car pos) 1) (- (cadr pos) 1)) '())))
+        (define (gen-poss pos size)
+            (append (append (gen-left-slant pos size) (gen-right-slant pos size)) (gen-y pos size)))	
+        (define (vaild? queen pos);判断当前位置是否可以放置皇后
+            (define check-poss (gen-poss pos size));需要检查的点
+            (define (check poss)
+                (if (null? poss) #t
+                    (if (member? queen (car poss)) #f
+                        (check (cdr poss)))))
+            (check check-poss))			
+        (define (foreach-row x y queen)
+            (cond 
+                  [(>= x size) '()]
+                  [(>= y size) queen]
+                  [(not (vaild? queen (list x y))) (foreach-row (+ x 1) y queen)];尝试右边一个位置
+                  [else (let ([ret (foreach-row 0 (+ y 1) (cons (list x y) queen))]);下一行
+                             (if (not (null? ret)) ret ;得到结果
+                                (foreach-row (+ x 1) y queen)))]));尝试下一个位置
+        (let* ([queen (foreach-row 0 0 '())]
+               [matrix (gen-matrix size size (lambda (x y) (if (member? queen (list x y)) '* " ")))])
+               (show-matrix matrix)))
+	
+如果要输出所有的解,只要将`(define (foreach-row x y queen)`及以下的代码替换成
+
+	(define (foreach-row x y queen)
+		(cond 
+			  [(>= x size) '()]
+			  [(>= y size) queen]
+			  [(not (vaild? queen (list x y))) (foreach-row (+ x 1) y queen)];尝试右边一个位置
+			  [else (let* ([ret (foreach-row 0 (+ y 1) (cons (list x y) queen))]);下一行
+						 (if (not (null? ret))( begin (display "----result-----\n")
+							(show-matrix (gen-matrix size size (lambda (x y)
+															     (if (member? ret (list x y)) '* " "))))))
+						 (foreach-row (+ x 1) y queen))]))
+	(foreach-row 0 0 '()))
+
+
