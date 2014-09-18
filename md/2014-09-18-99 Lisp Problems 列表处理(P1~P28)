@@ -133,13 +133,13 @@ Example:
                     (if (> size 1) (cons (list (length x) (car x)) acc)
                         (cons (car x) acc)))) '() p)))
 
-;P12 (**) Decode a run-length encoded list.
-;Given a run-length code list generated as specified in problem P11. Construct its uncompressed version.
+####P12 (**) Decode a run-length encoded list.
+Given a run-length code list generated as specified in problem P11. Construct its uncompressed version.
 
-(define (decode xs)
-	(foldr (lambda (x acc)
-			(if (pair? x) (append (rep (cadr x) (car x)) acc)
-				(append (list x) acc))) '() xs))
+	(define (decode xs)
+		(foldr (lambda (x acc)
+				(if (pair? x) (append (rep (cadr x) (car x)) acc)
+					(append (list x) acc))) '() xs))
 	
 
 ####P13 (**) Run-length encoding of a list (direct solution).
