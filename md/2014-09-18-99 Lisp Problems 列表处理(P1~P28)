@@ -226,3 +226,4 @@ Example:
                  (if (and (>= fst n1) (<= fst n2)) (list (+ fst 1) (cons x snd))
                     (list (+ fst 1) snd)))) '(1 ()) xs)))))
 					  
+###待续
