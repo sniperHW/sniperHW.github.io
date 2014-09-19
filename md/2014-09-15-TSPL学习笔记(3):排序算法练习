@@ -63,7 +63,7 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
 
 比较下与haskell版的区别,首先是没有列表解析,其次是没有模式匹配,需要用if表达式处理.
 
-当然haskell中也是由filter的,下面就是haskell快排的filter版本:
+当然haskell中也是有filter的,下面就是haskell快排的filter版本:
 
     quicksort :: (Ord a) => [a] -> [a]     
     quicksort [] = []     
@@ -71,6 +71,33 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
         let smallerSorted = quicksort (filter (<=x) xs) 
             biggerSorted = quicksort (filter (>x) xs)    
         in  smallerSorted ++ [x] ++ biggerSorted
+
+在引haskell中fold后代码可以更加简洁和高效：
+
+(define (foldl f init xs)
+	(define (iter xs acc)
+		(if (null? xs) acc
+			(iter (cdr xs) (f acc (car xs)))))
+	(iter xs init))
+
+(define (foldr f init xs)
+	(define (iter xs acc)
+		(if (null? xs) acc
+			(iter (cdr xs) (f (car xs) acc))))
+	(iter (reverse xs) init))
+
+(define (qsort l greater)
+	(if (not (pair? l)) '()
+		(let ([m (car l)]
+		     [partition (foldr (lambda (x acc)
+				         (let ([small (car acc)]
+					       [large (cadr acc)])
+					 (if (greater x m) (list small (cons x large))
+					     (list (cons x small) large))))
+				'(()()) (cdr l))])  
+		(append (qsort (car partition) greater) 
+		        (cons m (qsort (cadr partition) greater))))))
+
 
 
 
