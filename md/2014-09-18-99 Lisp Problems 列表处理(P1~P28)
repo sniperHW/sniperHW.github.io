@@ -398,26 +398,29 @@ Note that in the above example, the first two lists in the result have length 4 
 both lengths appear just once. The third and forth list have length 3 which appears twice 
 (there are two list of this length). And finally, the last three lists have length 2. This is the most frequent length.
 
-;quick sort
-	(define (qsort l greater)
-		(define (my-filter f l)
-			(define cps
-				(lambda (l k)
-					(if (not (pair? l)) (k '())
-						(let ([h (car l)])
-							(if (f h) (cps (cdr l) (lambda (x) (k (cons h x))))
-								(cps (cdr l) (lambda (x) (k x))))))))
-			(cps l (lambda (x) x)))
-		(if (not (pair? l)) '()
-			(let* ([m (car l)]
-				   [large (my-filter (lambda (x) (if (greater x m) #t #f)) (cdr l))]
-				   [less (my-filter (lambda (x) (if (not (greater x m)) #t #f)) (cdr l))])
-			(append (qsort less greater) (cons m (qsort large greater))))))            
+quick sort
 
-;a)
+      (define (qsort l greater)
+          (define (my-filter f l)
+              (define cps
+                  (lambda (l k)
+                      (if (not (pair? l)) (k '())
+                          (let ([h (car l)])
+                              (if (f h) (cps (cdr l) (lambda (x) (k (cons h x))))
+                                  (cps (cdr l) (lambda (x) (k x))))))))
+              (cps l (lambda (x) x)))
+          (if (not (pair? l)) '()
+              (let* ([m (car l)]
+                     [large (my-filter (lambda (x) (if (greater x m) #t #f)) (cdr l))]
+                     [less (my-filter (lambda (x) (if (not (greater x m)) #t #f)) (cdr l))])
+              (append (qsort less greater) (cons m (qsort large greater))))))            
+
+a)
+
 	(define (lsort xs) (qsort xs (lambda (l r) (> (length l) (length r)))))
 
-;b)	
+b)	
+
 	(define (lfsort xs)
 		(define (statistics xs)
 			(foldr (lambda (x acc) (cons (length x) acc)) '() xs))
