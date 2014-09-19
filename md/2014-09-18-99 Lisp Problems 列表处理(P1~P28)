@@ -400,20 +400,17 @@ both lengths appear just once. The third and forth list have length 3 which appe
 
 quick sort
 
-      (define (qsort l greater)
-          (define (my-filter f l)
-              (define cps
-                  (lambda (l k)
-                      (if (not (pair? l)) (k '())
-                          (let ([h (car l)])
-                              (if (f h) (cps (cdr l) (lambda (x) (k (cons h x))))
-                                  (cps (cdr l) (lambda (x) (k x))))))))
-              (cps l (lambda (x) x)))
-          (if (not (pair? l)) '()
-              (let* ([m (car l)]
-                     [large (my-filter (lambda (x) (if (greater x m) #t #f)) (cdr l))]
-                     [less (my-filter (lambda (x) (if (not (greater x m)) #t #f)) (cdr l))])
-              (append (qsort less greater) (cons m (qsort large greater))))))            
+	(define (qsort l greater)
+		(if (not (pair? l)) '()
+		     	(let ([m (car l)]
+			      [partition (foldr (lambda (x acc)
+					   (let ([small (car acc)]
+						 [large (cadr acc)])
+						(if (greater x m) (list small (cons x large))
+						    (list (cons x small) large))))
+					 '(()()) (cdr l))])  
+			(append (qsort (car partition) greater) 
+			        (cons m (qsort (cadr partition) greater))))))           
 
 a)
 
