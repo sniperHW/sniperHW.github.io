@@ -311,17 +311,108 @@ In how many ways can a committee of 3 be chosen from a group of 12 people? We al
  are C(12,3) = 220 possibilities (C(N,K) denotes the well-known binomial coefficients). For pure 
 mathematicians, this result may be great. But we want to really generate all the possibilities in a list.
 
-Example:
- (combination 3 '(a b c d e f))
-((A B C) (A B D) (A B E) ... )	
+    ;组合
+    (define (combination xs n)
+        (cond [(or (null? xs) (< (length xs) n))'()]
+              [(= n 1) (foldr (lambda (x acc) (cons (list x) acc)) '() xs)]
+              [else (append (foldr (lambda (x acc) (cons (cons (car xs) x) acc))
+                                   '() (combination (cdr xs) (- n 1))) ;取当前(car xs) + (cdr xs)中取n-1个 
+                            (combination (cdr xs) n))]));从(cdr xs)中取n个			   
+    ;(length (combination '(1 2 3 4 5 6 7 8 9 10 11 12) 3))
 
-	(define (combination xs n)
-		(cond [(null? xs) '()]
-		      [(< (length xs) n) '()] 
-			  [(= n 1) (foldr (lambda (x acc) (cons (list x) acc)) '() xs)]
-			  [else (append (foldr (lambda (x acc) (cons (cons (car xs) x) acc))
-							   '() (combination (cdr xs) (- n 1)))
-						   (combination (cdr xs) n))]))			   
-	;(length (combination '(1 2 3 4 5 6 7 8 9 10 11 12) 3))                    
+    ;排列
+    (define (permutation xs n)
+        (cond [(or (null? xs) (< (length xs) n))'()]
+              [(= n 1) (foldr (lambda (x acc) (cons (list x) acc)) '() xs)]
+              [else (let* ([permutation-n-1 (permutation (cdr xs) (- n 1))];(cdr xs)取n-1的排列
+                          [head (car xs)]
+                          [permutation-swap (foldl (lambda (acc x) ;将head与arrange-n-1中的元素互换
+                                                (append (foldl (lambda (acc1 xx)
+                                                       (append (foldl (lambda (acc2 xxx) (cons (cons (element-at x xx) xxx) acc2)) '() (list (replace x head xx))) acc1))
+                                                       '() (range 1 (length x))) acc)) '() permutation-n-1)])
+                          (append (append (foldl (lambda (acc x) (cons (cons head x) acc)) '() permutation-n-1) permutation-swap) (permutation (cdr xs) n)))]))
+					  
+P27 (**) Group the elements of a set into disjoint subsets.
+a) In how many ways can a group of 9 people work in 3 disjoint subgroups of 2, 3 and 4 
+persons? Write a function that generates all the possibilities and returns them in a list.
+
+Example:
+ (group3 '(aldo beat carla david evi flip gary hugo ida))
+( ( (ALDO BEAT) (CARLA DAVID EVI) (FLIP GARY HUGO IDA) )
+... )
+
+b) Generalize the above predicate in a way that we can specify a list of group sizes and the 
+predicate will return a list of groups.
+
+Example:
+ (group '(aldo beat carla david evi flip gary hugo ida) '(2 2 5))
+( ( (ALDO BEAT) (CARLA DAVID) (EVI FLIP GARY HUGO IDA) )
+... )
+
+Note that we do not want permutations of the group members; i.e. ((ALDO BEAT) ...) is 
+the same solution as ((BEAT ALDO) ...). However, we make a difference between ((ALDO BEAT) (CARLA DAVID) ...) 
+and ((CARLA DAVID) (ALDO BEAT) ...).
+
+You may find more about this combinatorial problem in a good book on discrete mathematics under the term "multinomial coefficients".
+					  							      									 
+    (define (group xs g)
+        (define (tail xs) (car (reverse xs)))	
+        ;输入xs和n,输出((xs取n的组合1,剩余元素1) (xs取n的组合2,剩余元素2) ...)
+        (define (half-group xs n)
+            ;输出差集
+            (define (diffset xs xs1)
+                (foldr (lambda (x acc) 
+                         (if (not (check-element xs1 (lambda (xx) (eq? x xx))))
+                             (cons x acc) acc)) '() xs))
+            (let ([c (combination xs n)])
+                 (foldr (lambda (x acc)
+                     (cons (list x (diffset xs x)) acc)) '() c)))			 			 
+        (if (and (not (null? g)) (not (= (length xs) (car g))))
+            (let* ([half (half-group xs (car g))])
+                  (foldr (lambda (x acc)
+                            (let ([t (group (tail x) (cdr g))])
+                                (append (foldr (lambda (x1 acc1)
+                                        (let ([xx (if (= (length g) 1) (list x1) x1)])
+                                        (cons (cons (car x) xx) acc1))) '() t) acc))) '() half))            
+            (if (and (not (null? g)) (= (length xs) (car g))) (list (list xs)) (list xs))))
+		
+		
+P28 (**) Sorting a list of lists according to length of sublists
+a) We suppose that a list contains elements that are lists themselves. 
+The objective is to sort the elements of this list according to their length. E.g. short lists first, longer lists later, or vice versa.
+
+Example:
+ (lsort '((a b c) (d e) (f g h) (d e) (i j k l) (m n) (o)))
+((O) (D E) (D E) (M N) (A B C) (F G H) (I J K L))
+
+b) Again, we suppose that a list contains elements that are lists themselves. 
+But this time the objective is to sort the elements of this list according to their length frequency; 
+i.e., in the default, where sorting is done ascendingly, lists with rare lengths are placed first, others with a 
+more frequent length come later.
+
+Example:
+ (lfsort '((a b c) (d e) (f g h) (d e) (i j k l) (m n) (o)))
+((i j k l) (o) (a b c) (f g h) (d e) (d e) (m n))
+
+Note that in the above example, the first two lists in the result have length 4 and 1, 
+both lengths appear just once. The third and forth list have length 3 which appears twice 
+(there are two list of this length). And finally, the last three lists have length 2. This is the most frequent length.
+
+    (define (qsort l greater)
+        (define (my-filter f l)
+            (define cps
+                (lambda (l k)
+                    (if (not (pair? l)) (k '())
+                        (let ([h (car l)])
+                            (if (f h) (cps (cdr l) (lambda (x) (k (cons h x))))
+                                (cps (cdr l) (lambda (x) (k x))))))))
+            (cps l (lambda (x) x)))
+        (if (not (pair? l)) '()
+            (let* ([m (car l)]
+                   [large (my-filter (lambda (x) (if (greater x m) #t #f)) (cdr l))]
+                   [less (my-filter (lambda (x) (if (not (greater x m)) #t #f)) (cdr l))])
+            (append (qsort less greater) (cons m (qsort large greater))))))            
+
+    (define (lsort xs) (qsort xs (lambda (l r) (> (length l) (length r)))))	                  
 					  
 ###待续
