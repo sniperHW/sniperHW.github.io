@@ -229,3 +229,65 @@ haskell的实现
     puzzle :: Int -> Int
     puzzle 0 = 0
     puzzle size = length $ foreachrow (0,0) size [] []
+
+####蛇形矩阵
+
+输入2,输出:
+
+	1 2 
+    4 3
+
+输入3,输出:
+
+	1 2 3
+    8 9 4
+    7 6 5 
+
+依此类推.
+
+先简单描述下算法,初始时矩阵全为0,向左移动并将计数值1写到起始位置(0 0),一直向当前方向移动,直到遇到碰撞,切换移动方向.碰撞的条件是x y坐标超出矩阵范围或x y位置的值不为0.
+
+为了处理二维数组添加以下的辅助函数:
+
+    ;1维,2维数组            
+    ;数组起始下标为0            
+    (define (make-array n init) (rep init n))
+    (define (array-at array n) (element-at array (+ n 1)))
+    (define (array-replace-at array n new) (replace array new (+ n 1)))
+
+    (define (make-array2d width hight init) (make-array hight (make-array width init))) 
+
+    (define (array2d-at array2d c r)
+        (let ([row (if (> (length array2d) r) (array-at array2d r) '())])
+             (if (null? row) "idx out of range"
+                 (if (> c (length row)) "idx out of range"
+                    (array-at row c)))))
+
+    (define (array2d-replace-at array2d c r new)
+        (let ([row (if (> (length array2d) r) (array-at array2d r) '())])
+             (if (null? row) "idx out of range"
+                 (if (> c (length row)) "idx out of range"
+                    (array-replace-at array2d r (array-replace-at row c new))))))
+                    
+下面是主函数
+
+    (define (snake size)
+        (define maxc (* size size))
+        (define (snake-imp c matrix cur direction)
+            (if (> c maxc) matrix
+                (let* ([curx (car cur)]
+                       [cury (cadr cur)]
+                       [tmpx (+ curx (caar direction))]
+                       [tmpy (+ cury (cadar direction))]
+                       [newmatrix (array2d-replace-at matrix curx cury c)]
+                       [newdirection (if (or ;检测是否需要调整方向
+                                         (> 0 tmpx)
+                                         (>= tmpx size)
+                                         (> 0 tmpy)
+                                         (>= tmpy size)
+                                         (not (= 0 (array2d-at newmatrix tmpx tmpy)))) (lshift direction 1)
+                                         direction)]
+                       [newx (+ curx (caar newdirection))]
+                       [newy (+ cury (cadar newdirection))])                                                       
+                (snake-imp (+ c 1) newmatrix (list newx newy) newdirection))))       
+         (snake-imp 1 (make-array2d size size 0)  '(0 0) '((1 0) (0 1) (-1 0) (0 -1))))
