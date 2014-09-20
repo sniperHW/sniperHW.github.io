@@ -398,21 +398,31 @@ Note that in the above example, the first two lists in the result have length 4 
 both lengths appear just once. The third and forth list have length 3 which appears twice 
 (there are two list of this length). And finally, the last three lists have length 2. This is the most frequent length.
 
-    (define (qsort l greater)
-        (define (my-filter f l)
-            (define cps
-                (lambda (l k)
-                    (if (not (pair? l)) (k '())
-                        (let ([h (car l)])
-                            (if (f h) (cps (cdr l) (lambda (x) (k (cons h x))))
-                                (cps (cdr l) (lambda (x) (k x))))))))
-            (cps l (lambda (x) x)))
-        (if (not (pair? l)) '()
-            (let* ([m (car l)]
-                   [large (my-filter (lambda (x) (if (greater x m) #t #f)) (cdr l))]
-                   [less (my-filter (lambda (x) (if (not (greater x m)) #t #f)) (cdr l))])
-            (append (qsort less greater) (cons m (qsort large greater))))))            
+quick sort
 
-    (define (lsort xs) (qsort xs (lambda (l r) (> (length l) (length r)))))	                  
-					  
-###待续
+	(define (qsort l greater)
+		(if (not (pair? l)) '()
+		     	(let ([m (car l)]
+			      [partition (foldr (lambda (x acc)
+					   (let ([small (car acc)]
+						 [large (cadr acc)])
+						(if (greater x m) (list small (cons x large))
+						    (list (cons x small) large))))
+					 '(()()) (cdr l))])  
+			(append (qsort (car partition) greater) 
+			        (cons m (qsort (cadr partition) greater))))))           
+
+a)
+
+	(define (lsort xs) (qsort xs (lambda (l r) (> (length l) (length r)))))
+
+b)	
+
+	(define (lfsort xs)
+		(define (statistics xs)
+			(foldr (lambda (x acc) (cons (length x) acc)) '() xs))
+		(define (get-frequent ftable l)
+			(if (= (cadar ftable) (length l)) (caar ftable)
+				(get-frequent (cdr ftable) l)))
+		(let ([ftable (encode (qsort (statistics xs) (lambda (l r) (> l r))))])
+			(qsort xs (lambda (l r)  (> (get-frequent ftable l) (get-frequent ftable r))))))
