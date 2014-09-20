@@ -63,7 +63,7 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
 
 比较下与haskell版的区别,首先是没有列表解析,其次是没有模式匹配,需要用if表达式处理.
 
-当然haskell中也是有filter的,下面就是haskell快排的filter版本:
+当然haskell中也是由filter的,下面就是haskell快排的filter版本:
 
     quicksort :: (Ord a) => [a] -> [a]     
     quicksort [] = []     
@@ -72,36 +72,45 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
             biggerSorted = quicksort (filter (>x) xs)    
         in  smallerSorted ++ [x] ++ biggerSorted
 
-在引haskell中fold后代码可以更加简洁和高效：
-
-	(define (foldl f init xs)
-		(define (iter xs acc)
-			(if (null? xs) acc
-				(iter (cdr xs) (f acc (car xs)))))
-		(iter xs init))
-	
-	(define (foldr f init xs)
-		(define (iter xs acc)
-			(if (null? xs) acc
-				(iter (cdr xs) (f (car xs) acc))))
-		(iter (reverse xs) init))
-	
-	(define (qsort l greater)
-		(if (not (pair? l)) '()
-			(let ([m (car l)]
-			     [partition (foldr (lambda (x acc)
-					         (let ([small (car acc)]
-						       [large (cadr acc)])
-						 (if (greater x m) (list small (cons x large))
-						     (list (cons x small) large))))
-					'(()()) (cdr l))])  
-			(append (qsort (car partition) greater) 
-			        (cons m (qsort (cadr partition) greater))))))
-
-
 
 
 ####冒泡排序
 
 冒泡排序的详细介绍[见](http://zh.wikipedia.org/wiki/%E5%86%92%E6%B3%A1%E6%8E%92%E5%BA%8F)
 
+首先要定义一个交换函数:
+
+    ;交换列表中的两个元素	      
+    (define (swap xs n1 n2)
+        (let ([a (element-at xs n1)]
+              [b (element-at xs n2)])
+              (reverse (car (cdr (foldl (lambda (acc x)
+                (let ([fst (car acc)]
+                      [snd (car (cdr acc))])			 
+                     (cond [(= fst n1) (list (+ fst 1) (cons b snd))]
+                           [(= fst n2) (list (+ fst 1) (cons a snd))]
+                           [else (list (+ fst 1) (cons x snd))]))) '(1 ()) xs))))))
+                           
+以下是冒泡排序的实现:
+
+    (define (bubble xs)
+        (define (bubble-imp xs less)	
+            (if (= (length xs) 1) (list (car xs) less);返回最大值和剩余值组成的列表
+                (let ([f (car xs)]
+                      [s (cadr xs)])
+                     (if (> f s) (bubble-imp (cdr (swap xs 1 2)) (reverse (cons s less)))
+                                 (bubble-imp (cdr xs) (reverse (cons f less)))))))
+        (define (iter xs result)
+            (if (null? xs) result
+                (let ([r (bubble-imp xs '())])
+                     (iter (cadr r) (cons (car r) result)))))
+        (iter xs '()))		
+
+辅助过程`bubble-imp`用于筛选列表,它的返回值是输入列表的(最大元素 其余剩余元素的列表)
+`bubble-imp`每轮执行都会比较列表的第一和第二个元素,如果第一个元素大于第二个元素则交换它们两的位置,
+然后将较小的元素插入less中,之后丢弃表头(较小的元素)用剩余元素执行第二轮迭代,直到输入列表中只剩下1个元素,此时,那个剩余元素就是初始
+输入列表中的最大元素,而less中则存放了其余的元素.
+
+
+也就是每次执行`bubble-imp`都会生成一个最大值和其余元素的列表,为了完成排序需要将最大值插入结果列表,然后继续从剩余元素中找出次大值.
+'iter'过程完成的就是这个任务,执行`bubble-imp`将最大值插入结果列表然后判断是否还有剩余元素,如果有则继续上述过程.
