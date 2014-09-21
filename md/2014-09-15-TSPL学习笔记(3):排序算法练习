@@ -72,6 +72,31 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
             biggerSorted = quicksort (filter (>x) xs)    
         in  smallerSorted ++ [x] ++ biggerSorted
 
+在引haskell中fold后代码可以更加简洁和高效：
+
+	(define (foldl f init xs)
+		(define (iter xs acc)
+			(if (null? xs) acc
+				(iter (cdr xs) (f acc (car xs)))))
+		(iter xs init))
+	
+	(define (foldr f init xs)
+		(define (iter xs acc)
+			(if (null? xs) acc
+				(iter (cdr xs) (f (car xs) acc))))
+		(iter (reverse xs) init))
+	
+	(define (qsort l greater)
+		(if (not (pair? l)) '()
+			(let ([m (car l)]
+			     [partition (foldr (lambda (x acc)
+					         (let ([small (car acc)]
+						       [large (cadr acc)])
+						 (if (greater x m) (list small (cons x large))
+						     (list (cons x small) large))))
+					'(()()) (cdr l))])  
+			(append (qsort (car partition) greater) 
+			        (cons m (qsort (cadr partition) greater))))))
 
 
 ####冒泡排序
