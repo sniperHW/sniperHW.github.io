@@ -326,11 +326,19 @@ mathematicians, this result may be great. But we want to really generate all the
               [(= n 1) (foldr (lambda (x acc) (cons (list x) acc)) '() xs)]
               [else (let* ([permutation-n-1 (permutation (cdr xs) (- n 1))];(cdr xs)取n-1的排列
                           [head (car xs)]
-                          [permutation-swap (foldl (lambda (acc x) ;将head与arrange-n-1中的元素互换
-                                                (append (foldl (lambda (acc1 xx)
-                                                       (append (foldl (lambda (acc2 xxx) (cons (cons (element-at x xx) xxx) acc2)) '() (list (replace x head xx))) acc1))
-                                                       '() (range 1 (length x))) acc)) '() permutation-n-1)])
-                          (append (append (foldl (lambda (acc x) (cons (cons head x) acc)) '() permutation-n-1) permutation-swap) (permutation (cdr xs) n)))]))
+                          [permutation-swap 
+                          		(foldl 
+                                	(lambda (acc x) ;将head与arrange-n-1中的元素互换
+                                       	(append (foldl 
+                 									(lambda (acc1 xx)
+                                               				(append (foldl 
+                                                            			(lambda (acc2 xxx) 
+                                                            				 (cons (cons (element-at x xx) xxx) acc2))
+                                                            '() (list (replace x head xx))) acc1))
+                                    '() (range 1 (length x))) acc)) '() permutation-n-1)])
+                          (append (append (foldl (lambda (acc x) 
+                          							(cons (cons head x) acc))
+                                           '() permutation-n-1) permutation-swap) (permutation (cdr xs) n)))]))
 					  
 P27 (**) Group the elements of a set into disjoint subsets.
 a) In how many ways can a group of 9 people work in 3 disjoint subgroups of 2, 3 and 4 
