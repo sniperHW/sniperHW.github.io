@@ -183,4 +183,206 @@ etc......No
                            (append t1 t2 t3))]))
                            
                            
-                           
+P60 (**) Construct height-balanced binary trees with a given number of nodes
+Consider a height-balanced binary tree of height H. What is the maximum number of nodes it can contain?
+Clearly, MaxN = 2**H - 1. However, what is the minimum number MinN? This question is more difficult. 
+Try to find a recursive statement and turn it into a predicate minNodes/2 defined as follwos:
+
+% minNodes(H,N) :- N is the minimum number of nodes in a height-balanced binary tree of height H.
+(integer,integer), (+,?)
+
+On the other hand, we might ask: what is the maximum height H a height-balanced binary tree with N nodes can have?
+
+% maxHeight(N,H) :- H is the maximum height of a height-balanced binary tree with N nodes
+(integer,integer), (+,?)
+
+Now, we can attack the main problem: construct all the height-balanced binary trees with a given nuber of nodes.
+
+% hbal-tree-nodes(N,T) :- T is a height-balanced binary tree with N nodes.
+
+Find out how many height-balanced trees exist for N = 15.            
+
+    (define (exponent x n) 
+            (cond [(= 0 n) 1]
+                  [(= 1 n) x]
+                  [else (* x (exponent x (- n 1)))]))
+
+    (define (maxNodes h) (- (exponent 2 h) 1))
+
+    ;高度为h的具有最少内节点数量的高度平衡树其两棵子树必定一棵是高度为h-1
+    ;具有最少内节点数量的高度平衡树,一棵是高度为h-2具有最少内节点数量的高度平衡树
+
+    ;高度为0,最少内节点数量为0,高度为1,最小内节点数量为1,高度为2最少內节点数量为2
+    ;minNodes(h) = 1 ,h == 1
+    ;minNodes(h) = 2 ,h == 2
+    ;minNodes(h) = minNodes( h - 1 ) + minNodes(h - 2) + 根节点,h == 3
+    ;			 = minNodes(2) + minNodes(1) + 1 = 4 
+    (define (minNodes h)
+        (cond [(= 0 h) 0]
+              [(= 1 h) 1]
+              [(= 2 h) 2]
+              [else (+ 1 (+ (minNodes (- h 1)) (minNodes (- h 2))))]))
+
+
+    ;maxHeight N个节点的高度平衡树的最大高度
+    ;解法1)从h=1开始调用minNodes,如果N >= minNodes(h) and minNodes(h+1) > N ,则h就是最大高度
+    (define (maxHeight n)
+        (define (iter h)
+            (if (and (>= n (minNodes h)) (> (minNodes (+ h 1)) n)) h
+                (iter (+ h 1))))
+        (if (= n 0) 0
+            (iter 1)))
+
+
+    (define (minHeight n) (ceiling (log (+ n 1) 2)))
+
+
+    (define (countNode tree) 
+        (if (eq? 'nil tree) 0
+            (+ 1 (+ (countNode (cadr tree)) (countNode (caddr tree))))))
+
+
+    ;hbal-tree-nodes
+    ;解法1)通过maxHeight获得树的最大高度H,通过minHeight获得最小高度h
+    ;通过hbal-tree构造h~H之间的所有高度平衡树,过滤掉节点数量不为n的
+
+    (define (hbal-tree-nodes n)
+        (let* ([maxh (maxHeight n)]
+               [minh (minHeight n)]
+               [rangeh (range minh maxh)]
+               [all (foldl (lambda (acc x)
+                     (append (hbal-tree x) acc)) '() rangeh)])	   	
+               (foldl (lambda (acc x)
+                        (if (= (countNode x) n) (cons x acc) acc))
+                      '() all))) 
+                      
+P61 (*) Count the leaves of a binary tree
+A leaf is a node with no successors. Write a predicate count-leaves/2 to count them. 
+
+% count-leaves(T,N) :- the binary tree T has N leaves      
+
+    (define (count-leaves tree)
+        (if (eq? tree 'nil) 0
+            (let ([rcount (count-leaves (cadr tree))]
+                  [lcount (count-leaves (caddr tree))])
+             (if (and (= 0 rcount) (= 0 lcount)) 1
+                 (+ rcount lcount)))))
+                 
+                 
+P61A (*) Collect the leaves of a binary tree in a list
+A leaf is a node with no successors. Write a predicate leaves/2 to collect them in a list. 
+% leaves(T,S) :- S is the list of all leaves of the binary tree T			 
+
+    (define (leaves tree)
+        (if (eq? tree 'nil) '()
+            (let ([left (cadr tree)]
+                  [right (caddr tree)])
+                 (if (and (eq? left 'nil) (eq? right 'nil))
+                     (list tree)
+                  (append (leaves left) (leaves right))))))
+                  
+P62 (*) Collect the internal nodes of a binary tree in a list
+An internal node of a binary tree has either one or two non-empty successors. 
+Write a predicate internals/2 to collect them in a list. 
+% internals(T,S) :- S is the list of internal nodes of the binary tree T.                  
+
+    (define (internals tree)
+        (if (eq? tree 'nil) '()
+            (let ([left (cadr tree)]
+                  [right (caddr tree)])
+                 (if (not (and (eq? left 'nil) (eq? right 'nil)))
+                     (append (internals left) (internals right) (list (list (car tree) 'nil 'nil)))
+                     '()))))
+                     
+P62B (*) Collect the nodes at a given level in a list
+A node of a binary tree is at level N if the path from the root to the node has length N-1. 
+The root node is at level 1. Write a predicate atlevel/3 to collect all nodes at a given level in a list. 
+
+% atlevel(T,L,S) :- S is the list of nodes of the binary tree T at level L
+
+Using atlevel/3 it is easy to construct a predicate levelorder/2 which creates the level-order sequence 
+of the nodes. However, there are more efficient ways to do that.	                     
+
+    (define (atlevel tree l)
+        (define (iter tree cur-l)
+            (cond [(eq? tree 'nil) '()]
+                  [(= l cur-l) (list (list (car tree) 'nil 'nil))]
+                  [else (append (iter (cadr tree) (+ cur-l 1)) (iter (caddr tree) (+ cur-l 1)))]))
+        (iter tree 1))
+
+
+    ;广度优先	
+    (define (levelorder tree)
+        (define (travel travel-que result)
+            (if (null? travel-que) result
+                (let ([mid-result 
+                       (foldr (lambda (x acc)
+                            (if (not (eq? x 'nil))
+                                (list (cons (cadr x) (cons (caddr x) (car acc)))
+                                      (cons (car x) (cadr acc)))
+                                acc)) '(()()) travel-que)])			
+                     (append result (travel (car mid-result) (cadr mid-result))))))
+         (travel (list tree) '()))   
+         
+         
+P63 (**) Construct a complete binary tree
+A complete binary tree with height H is defined as follows: The levels 1,2,3,...,H-1 contain the maximum number of nodes 
+(i.e 2**(i-1) at the level i, note that we start counting the levels from 1 at the root). 
+In level H, which may contain less than the maximum possible number of nodes, all the nodes are "left-adjusted". 
+This means that in a levelorder tree traversal all internal nodes come first, the leaves come second, and empty successors 
+(the nil's which are not really nodes!) come last.
+
+Particularly, complete binary trees are used as data structures (or addressing schemes) for heaps.
+
+We can assign an address number to each node in a complete binary tree by enumerating the nodes in levelorder,
+ starting at the root with number 1. In doing so, we realize that for every node X with address A the following property holds: 
+The address of X's left and right successors are 2*A and 2*A+1, respectively, supposed the successors do exist. 
+This fact can be used to elegantly construct a complete binary tree structure. Write a predicate complete-binary-tree/2 with the following specification: 
+
+% complete-binary-tree(N,T) :- T is a complete binary tree with N nodes. (+,?)
+
+Test your predicate in an appropriate way.	
+
+
+    (define (height tree)
+        (if (or (null? tree) (eq? tree 'nil)) 0
+            (+ 1 (max (height (cadr tree)) (height (caddr tree)))))) 
+
+    ;判断一棵树是否满二叉树
+    (define (full-binary-tree? tree)
+        (= (countNode tree) (maxNodes (height tree))))
+
+
+    ;添加子节点规则
+    ;1) 左右子树节点数量一致往左
+    ;2) 左子树非满往左
+    ;3) 其它情况往右
+    (define (addNode tree n)
+        (if (or (null? tree) (eq? tree 'nil)) (list n 'nil 'nil)
+            (let ([left-full (full-binary-tree? (cadr tree))]
+                  [left-size (countNode (cadr tree))]
+                  [right-size (countNode (caddr tree))])			 
+                 (if (or (= left-size right-size) (not left-full)) 						
+                    (list (car tree) (addNode (cadr tree) n) (caddr tree))
+                    (list (car tree) (cadr tree) (addNode (caddr tree) n))))));往右子树	
+
+    (define (complete-binary-tree n)
+        (foldl (lambda (acc x)
+                 (addNode acc x)) '() (range 1 n)))
+
+
+    ;一棵树是完全二叉树的条件
+    ;1) 满二叉树
+    ;2) 左子树是高度为h-1的完全二叉树且右子树是高度为h-2的满二叉树
+    ;3) 左子树是高度为h-1的满二叉树,且右子树是高度为h-1的完全二叉树 
+
+    (define (complete-binary-tree? tree)
+        (if (full-binary-tree? tree) #t
+            (let ([h (height tree)]
+                  [h-left (height (cadr tree))]
+                  [h-right (height (caddr tree))])
+             (cond [(and (= h-left (- h 1)) (complete-binary-tree? (cadr tree));左子树是高度为h-1的完全二叉树
+                         (= h-right (- h 2)) (full-binary-tree? (caddr tree))) #t];右子树是高度为h-2的满二叉树
+                   [(and (= h-left (- h 1)) (full-binary-tree? (cadr tree));左子树是高度为h-1的满二叉树   
+                         (= h-right (- h 1)) (complete-binary-tree? (caddr tree))) #t];右子树是高度为h-1的完全二叉树 
+                   [else #f]))))
