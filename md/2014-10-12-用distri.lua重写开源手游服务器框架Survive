@@ -1,0 +1,39 @@
+Survive之前采用的是C+lua的设计方式,其中网关服务器全部由C编写,其余服务全部是C框架运行lua回调函数的方式编写游戏逻辑.
+
+鉴于一般的手游对服务器端的压力不会太大,便将Survive用distri.lua框架重写了一便,distri.lua天生的支持协程,RPC和数据库访问直接使用同步接口实现,大大减少了对回调函数的使用,也使得逻辑代码的编写更加清晰和直观。
+
+首先简单介绍一下Survive,Survive是我目前开发的手机游戏使用的服务器的开源版本,因为是一个开源框架,所以Survive并不包含太多具体的游戏逻辑.目前Survive只提供以下功能:
+
+* 角色的验证和创建
+* 场景地图的管理和选择
+* 场景中移动,寻路以及视野同步
+* 简单的背包数据,角色数据和技能
+* 一个简单的测试客户端和机器人客户端
+* 客户端断线重连
+
+整个开源框架非常轻量级,目前全部lua代码(不包括distri.lua的部分)数量只有2800行左右.
+
+下面帖一些测试客户端的截屏:
+
+登录
+
+![Alt text](../postimg/battle1.bmp)
+
+
+地图选择
+
+![Alt text](../postimg/battle2.bmp)
+
+场景1
+
+![Alt text](../postimg/battle3.bmp)
+
+场景2
+
+![Alt text](../postimg/battle4.bmp)
+
+100个机器人
+
+![Alt text](../postimg/battle5.bmp)
+
+感兴趣的朋友可以关注:[Survive](https://github.com/sniperHW/Survive)
