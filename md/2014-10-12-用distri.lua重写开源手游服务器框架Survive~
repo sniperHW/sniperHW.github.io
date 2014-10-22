@@ -20,13 +20,9 @@ Survive之前采用的是C+lua的设计方式,其中网关服务器全部由C编
 ![Alt text](../postimg/battle1.bmp)
 
 
-角色创建
-
-![Alt text](../postimg/battle1.png)
-
 地图选择
 
-![Alt text](../postimg/battle2.png)
+![Alt text](../postimg/battle2.bmp)
 
 场景1
 
@@ -35,10 +31,6 @@ Survive之前采用的是C+lua的设计方式,其中网关服务器全部由C编
 场景2
 
 ![Alt text](../postimg/battle4.bmp)
-
-场景3
-
-![Alt text](../postimg/battle3.png)
 
 100个机器人
 
