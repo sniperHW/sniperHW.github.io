@@ -37,7 +37,7 @@
     	   (display _)
     )
     
-因为延续被绑定到了`break`,`(break #t)`相当于回到`display`这个执行点上,把`_`替换成`#t`然后继续执行.    
+也就是一个等待`_`被求值的计算过程,因为延续被绑定到了`break`,`(break #t)`相当于回到`display`这个执行点上,把`_`替换成`#t`然后继续执行.    
 
 现在对这个程序段稍加修改来更好的研究延续:
 
@@ -55,7 +55,7 @@
     	(display "val1:")(display val1)     
     )
     
-我们把捕捉到的延续绑定到了一个全局变量c1上，以使得在外部可以调用延续.
+我们把捕捉到的延续绑定到了一个全局变量c1上，以使得在`call/cc`外部可以调用延续.
 
     > (search-element 3 '(1 2 3 4))
     begin search-element
@@ -80,6 +80,23 @@
 这说明了我们调用延续的时候,的确是从第二个display那里继续执行的.
 
 
+延续是与其调用环境相关的,例如
+
+	(define (fun1)
+	  (define (fun2 return) (return 1))
+	  (define (fun3) (call/cc fun2)) 
+	  fun3)   
+	 >(define fun4 (fun1))
+     > (fun4)
+        1
+     > (fun4)
+        1
+     > (fun4)
+        1
+        
+`(call/cc fun2)`捕获到的延续的继续执行点不是其后续的语句`fun3`,而是根其当时的执行环境相关的,在这里我们将`fun4`绑定到了`fun1`
+的返回值,也就是`fun3`.`(fun4)`等价于`(fun3)`也就是说在当前环境下`(call/cc)`捕获到的延续相当于`(define (fun3) _)`,而我们在这段代码中用1来调用这个延续,产生的结果就是`fun4`返回1.        
+
 下面再看一个复杂点的例子一个generator.
 
 	(define (for-each proc items)
@@ -89,8 +106,7 @@
 	            (proc (car things))
 	            (iter (cdr things)))))
 	 (iter items))
-	
-	
+	 	
 	(define (generate-one-element-at-a-time lst)
 	  ;; Hand the next item from a-list to "return" or an end-of-list marker
 	  (define (control-state return)
