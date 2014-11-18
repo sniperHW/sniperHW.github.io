@@ -212,6 +212,58 @@
 这次只在第一次调用`proc`的时候才将`control-state`设置为`resume-here`,也就是说以后的每次调用，实际上都是第一次调用`proc`时的延续,
 而在这个延续中,相关的变量`things`始终是`(1,2)`,所以无论调用多少次`(generate-digit)`始终都是返回1.	
 	
+
+###局部延续(Partial Continuations)
+
+延续代表的是某个点之后的所有计算过程,一旦调用那个延续,当前的计算过程就被中止,回到延续的保存点上执行那个延续所代表的计算过程.请看下面的例子:
+
+    ;; Define a variable to hold the saved continuation
+    (define temp-cont #f)
+    
+    (define (bad-example1)
+      (call/cc (lambda (k) (set! temp-cont k)))
+      (display "Exiting bad-example1\n"))
+      
+    (define (use-bad-example1)
+      (temp-cont #f)
+      (display "Exiting use-bad-example1\n"))
+      
+    (bad-example1)
+     ;=> Exiting bad-example1
+    
+    (use-bad-example1)
+     ;=> Exiting bad-example1
+     
+`(use-bad-example1)`并没有输出我们所期待的`Exiting use-bad-example1`.因为延续保存的是它被捕获时的整个计算环境,对于本例来说这个计算环境在` (bad-example1)`这.所以`(temp-cont #f)`直接跳转到那个环境之下后面的` (display "Exiting use-bad-example1\n")`也就不可能被执行了.    
+                 
+如果我们希望这段代码能按我们的意思调用完`temp-cont`之后再执行后续的语句该怎么办呢:
+
+    (define (workaround-example1)
+      (let ((go-back-to (call/cc (lambda (k) (set! temp-cont k) #f))))
+        (display "Exiting workaround-example1\n")
+        (when go-back-to
+          (go-back-to #f))))
+
+    (workaround-example1)
+     ;=> Exiting workaround-example1
+    
+    (define (use-workaround-example1)
+      (call/cc
+       (lambda (k)
+         (temp-cont k)))
+      (display "Exiting use-workaround-example1\n"))
+    
+    (use-workaround-example1)
+     ;=> Exiting workaround-example1
+         Exiting use-workaround-example1
+
+
+做法就是在调用`temp-cont`之前捕获当前延续并用它作为参数调用`temp-cont`,这导致执行回到`let`那里,
+并将新捕获到的延续绑定到`go-back-to`.然后通过调用`go-back-to`回到我们所期待的那个延续上下文中.
+
+因为延续的概念太复杂,威力太强大,很容易导致误用.为此人们引入了部分延续的概念,如其名字所暗示的,局部延续代表的是后续计算中的某一个局部而不是全部 .与延续所不同,一个局部延续被调用,当属于这个延续的计算过程终止时控制会回到它的调用点上。从这一点上看局部延续的行为与函数有点相似.局部延续的详细介绍[请看](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.100.3665).
+
+
 最后贴一段用延续实现的协程来结束这篇博文.
 
 	    ;一个简单的,用continuation实现的协程接口
@@ -321,3 +373,5 @@
 * [Continuation 和高级流程控制(Jonathan Bartlett)](http://www.ibm.com/developerworks/cn/linux/l-advflow.html)
 
 * [Scheme Continuation 三部曲（一）——深入理解 Continuation](http://blog.sina.com.cn/s/blog_4dff871201018wtz.html)
+
+* [A Problem with Continuations](http://bluishcoder.co.nz/articles/scheme/partial-continuations.html)
