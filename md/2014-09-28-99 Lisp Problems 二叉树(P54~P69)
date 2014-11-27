@@ -571,7 +571,8 @@ determined unambiguously. Write a predicate pre-in-tree/3 that does the job.
 
 d) Solve problems a) to c) using difference lists. Cool! Use the predefined predicate time/1 to compare the solutions.
 
-What happens if the same character appears in more than one node. Try for instance pre-in-tree(aba,baa,T).			 
+What happens if the same character appears in more than one node. Try for instance pre-in-tree(aba,baa,T).	
+		 
     (define (preorder tree)
         (if (eq? tree 'nil) ""
             (string-append (car tree) (preorder (cadr tree)) (preorder (caddr tree)))))
