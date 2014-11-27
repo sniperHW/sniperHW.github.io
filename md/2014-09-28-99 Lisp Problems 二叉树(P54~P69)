@@ -491,3 +491,165 @@ Which layout do you like most?
     ;(layout-binary-tree3 '(c (a nil nil) (e (d nil nil) (g nil nil))))
     ;(layout-binary-tree3 '(n (k (c (a nil nil) (e (d nil nil) (g nil nil))) (m nil nil)) (u (p nil (q nil nil)) nil)))
     ;(layout-binary-tree3 '(a (b nil (c nil nil)) nil))
+
+P67 (**) A string representation of binary trees
+Somebody represents binary trees as strings of the following type (see example opposite):
+
+a(b(d,e),c(,f(g,)))
+
+![Alt text](../postimg/p67.gif)
+
+
+a) Write a Prolog predicate which generates this string representation, if the tree is given as usual (as nil or t(X,L,R) term). 
+Then write a predicate which does this inverse; i.e. given the string representation, construct the tree in the usual form. Finally, 
+combine the two predicates in a single predicate tree-string/2 which can be used in both directions.
+
+b) Write the same predicate tree-string/2 using difference lists and a single predicate tree-dlist/2 which does the conversion 
+between a tree and a difference list in both directions.
+
+For simplicity, suppose the information in the nodes is a single letter and there are no spaces in the string.
+
+
+    (define (tree->string tree)
+        (if (eq? 'nil tree) ""
+            (let* ([node (car tree)]
+                   [left (cadr tree)]
+                   [right (caddr tree)])
+                  (if (and (eq? 'nil left) (eq? 'nil right)) node
+                        (string-append node "(" (tree->string left) "," (tree->string right) ")")))))
+
+    ;(tree->string '("a" ("b" ("d" nil nil) ("e" nil nil)) ("c" nil ("f" ("g" nil nil) nil))))
+
+    (define (string->tree str)
+        (define (string-split s)
+            (define (mysubstring s start end)
+                    (cond [(eq? 0 end) ""]
+                          [(eq? (string-length s) start) ""]
+                          [else (substring s start end)]))
+            (define (find-split-index meet-l-bracket meet-r-bracket idx exit)
+                (let ([c (string-ref s idx)])
+                    (cond [(eq? c #\,) 
+                            (if (or (not meet-l-bracket) meet-r-bracket) (exit idx)
+                                (find-split-index meet-l-bracket meet-r-bracket (+ idx 1) exit))]
+                          [(eq? c #\() (find-split-index #t meet-r-bracket (+ idx 1) exit)]
+                          [(eq? c #\)) (find-split-index meet-l-bracket #t (+ idx 1) exit)]
+                          [else (find-split-index meet-l-bracket meet-r-bracket (+ idx 1) exit)] 
+                          )))
+            ;(string-split "b(d,e),c(,f(g,))")
+            ;=>("b(d,e)" "c(,f(g,))")			  
+            (let* ([idx (call/cc (lambda (exit) (find-split-index #f #f 0 exit)))]  			  
+                   [fst (mysubstring s 0 idx)]		  
+                   [snd (mysubstring s (+ idx 1) (string-length s))])		  
+                   (list fst snd)))
+        (cond [(string=? str "") 'nil]
+              [(eq? (string-length str) 1) (list str 'nil 'nil)]
+              [else (let* ([node (substring str 0 1)] 
+                           [splitstr (string-split (substring str 2 (- (string-length str) 1)))]
+                           [left-str (car splitstr)]
+                           [right-str(cadr splitstr)])
+                     (list node (string->tree left-str) (string->tree right-str)))]))
+
+    ;(string->tree "a(b(d,e),c(,f(g,)))")
+
+    (define (tree<->string input)
+        (cond [(string? input) (string->tree input)]
+              [(list? input) (tree->string input)]
+              [else 'nil]))
+
+
+P68 (**) Preorder and inorder sequences of binary trees
+We consider binary trees with nodes that are identified by single lower-case letters, as in the example of problem P67.
+
+a) Write predicates preorder/2 and inorder/2 that construct the preorder and inorder sequence of a given binary tree, 
+respectively. The results should be atoms, e.g. 'abdecfg' for the preorder sequence of the example in problem P67.
+
+b) Can you use preorder/2 from problem part a) in the reverse direction; i.e. given a preorder sequence, construct a 
+corresponding tree? If not, make the necessary arrangements.
+
+c) If both the preorder sequence and the inorder sequence of the nodes of a binary tree are given, then the tree is 
+determined unambiguously. Write a predicate pre-in-tree/3 that does the job.
+
+d) Solve problems a) to c) using difference lists. Cool! Use the predefined predicate time/1 to compare the solutions.
+
+What happens if the same character appears in more than one node. Try for instance pre-in-tree(aba,baa,T).			 
+    (define (preorder tree)
+        (if (eq? tree 'nil) ""
+            (string-append (car tree) (preorder (cadr tree)) (preorder (caddr tree)))))
+
+    ;(preorder '("a" ("b" ("d" nil nil) ("e" nil nil)) ("c" nil ("f" ("g" nil nil) nil))))
+
+    (define (inorder tree)
+        (if (eq? tree 'nil) ""
+            (string-append (inorder (cadr tree)) (car tree) (inorder (caddr tree)))))
+    ;(inorder '("a" ("b" ("d" nil nil) ("e" nil nil)) ("c" nil ("f" ("g" nil nil) nil))))
+
+    ;input: preorder sequence
+    ;output: binary tree
+    ;'abdecfg'
+    (define (build-preorder pre-str)
+            (let* ([len (string-length pre-str)]
+                   [c (if (> len 0) (substring pre-str 0 1) "")])
+                (cond [(eq? len 0) '(nil nil)]
+                      [(eq? len 1) (cons c (build-preorder ""))]
+                      [(eq? len 2) (list c (build-preorder (substring pre-str 1 2)) 'nil)]
+                      [else (list c 
+                                  (build-preorder (substring pre-str 1 2))
+                                  (build-preorder (substring pre-str 2 len)))]))) 
+
+    ;(build-preorder "abdecfg")
+
+    ;1)寻找根节点,在in-str中寻找pre-str中的第一个元素,此元素即为根节点
+    ;2)将in-str从分成两份例如"dbeacgf"-> "dbe" "cgf"
+    ;3)将pre-str也分成对应数量的两份例如"abdecfg" -> "bde" "cfg"
+    ;4)在两个子串上递归
+
+    (define (pre-in-tree pre-str in-str)
+        (define (mysubstring s start end)
+                (cond [(eq? 0 end) ""]
+                      [(eq? (string-length s) start) ""]
+                      [else (substring s start end)]))
+        (define (find-root c in-str idx exit)
+            (if (> idx (string-length in-str)) 'nil
+                (if (eq? c (string-ref in-str idx)) (exit idx)
+                    (find-root c in-str (+ idx 1) exit))))
+        (let ([len-pre (string-length pre-str)]
+              [len-in (string-length in-str)])
+        (if (not (eq? len-pre len-in)) 'nil
+            (cond [(eq? 0 len-pre) 'nil]
+                  [(eq? 1 len-pre) (list pre-str 'nil 'nil)]
+                  [else (let ([root-idx (call/cc (lambda (exit) (find-root (string-ref pre-str 0) in-str 0 exit)))])
+                        (if (eq? root-idx 'nil) 'nil
+                            (let* ([root (substring pre-str 0 1)]
+                                   [sub-in1 (mysubstring in-str 0 root-idx)]
+                                   [sub-in2 (mysubstring in-str (+ root-idx 1) (string-length in-str))]
+                                   [sub-pre1 (mysubstring pre-str 1 (+ 1 (string-length sub-in1)))] 
+                                   [sub-pre2 (mysubstring pre-str (+ 1 (string-length sub-in1)) (string-length pre-str))]) 	
+                                   (list root (pre-in-tree sub-pre1 sub-in1)
+                                              (pre-in-tree sub-pre2 sub-in2)))))]))))
+    ;(pre-in-tree "abdecfg" "dbeacgf")
+    
+P69 (**) Dotstring representation of binary trees
+We consider again binary trees with nodes that are identified by single lower-case letters,
+as in the example of problem P67. Such a tree can be represented by the preorder sequence of its 
+nodes in which dots (.) are inserted where an empty subtree (nil) is encountered during the tree traversal. 
+For example, the tree shown in problem P67 is represented as 'abd..e..c.fg...'. 
+First, try to establish a syntax (BNF or syntax diagrams) and then write a predicate tree-dotstring/2 which 
+does the conversion in both directions. Use difference lists.
+
+    (define (tree->dotstring tree)
+        (if (eq? tree 'nil) "."
+            (string-append (car tree) (tree->dotstring (cadr tree)) (tree->dotstring (caddr tree)))))
+
+    ;(tree-dotstring '("a" ("b" ("d" nil nil) ("e" nil nil)) ("c" nil ("f" ("g" nil nil) nil))))
+
+    (define (dotstring->tree dotstr)
+        (define (process dotstr)
+            (let ([c (substring dotstr 0 1)])
+                 (if (string=? "." c) (list (substring dotstr 1 (string-length dotstr)) 'nil)
+                  (let* ([left (process (substring dotstr 1 (string-length dotstr)))]
+                         [right (process (car left))])
+                        (list (car right) (list c (cadr left) (cadr right)))))))
+        (cadr (process dotstr))) 
+
+
+    ;(dotstring->tree "abd..e..c.fg...")    
