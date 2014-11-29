@@ -139,3 +139,31 @@ filter的功能是输入一个条件判断函数f和一个列表l,filter将l中�
 
 也就是每次执行`bubble-imp`都会生成一个最大值和其余元素的列表,为了完成排序需要将最大值插入结果列表,然后继续从剩余元素中找出次大值.
 'iter'过程完成的就是这个任务,执行`bubble-imp`将最大值插入结果列表然后判断是否还有剩余元素,如果有则继续上述过程.
+
+相应的haskell实现
+
+	-- 冒泡排序
+	bubble :: (Ord a) => [a] -> [a]
+	bubble []  = error "Can't call pass on an empty list, dummy!"
+	bubble (x:[]) = [x]
+	bubble xs = iter xs []
+		   where 
+			pass xs left		
+				| size == 2 = if first < second then (first:left,second)
+								 else (second:left,first)
+				| size > 2 =  let remain = tail (tail xs) in
+							  if first < second then pass (second:remain) (first:left)
+								 else pass (first:remain) (second:left)
+				| size == 1 = ([],first)				   					 
+				where 
+					  size  = length xs
+					  first = head xs
+					  second = head (tail xs)				  	   	   
+			iter xs result =
+				let 
+					passret = (pass xs [])
+					left = fst passret
+					max = snd passret 
+				in 
+					if length left == 0 then (max:result)
+				else iter left (max:result)
