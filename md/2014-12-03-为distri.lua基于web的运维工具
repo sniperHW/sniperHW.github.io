@@ -1,0 +1,200 @@
+我的新手游项目很快就要进入到寻找发行商的环节,最近几天相对较空闲,逐将工作重心转移到服务器组运维工具的制作上.
+回想一年之前经历的那个不算成功的端游项目,因为运维工具设计得不合理,使用十分不方便,游戏上线之后搞得我焦头烂额的.
+
+之前一直没碰过web相关的技术,最近几天猛看了下php和javascript相关的东西,逐决定用web的方式实现一套游戏服务器的运维和gm管理工具.
+这个系统的目标:
+
+* 按逻辑和物理机器的方式管理服务（包括监控,启动,关闭等）
+* 当机器或服务出现异常的时候自动向预先设定的邮件地址发送邮件
+* 控制目标机器执行版本升级任务
+* 提供gm管理工具以方便运维人员查看游戏的运行状况,发送游戏公告等.
+
+下面是这套系统雏形的两个截图:
+
+![Alt text](../postimg/web1.png)
+
+![Alt text](../postimg/web2.png)
+
+
+这两张截图展示的是服务器的管理界面.左边是一个有两个标签的树形控件.第一个标签是物理视图,第二个是逻辑视图.右边是监控界面和3个控制按扭.
+监控界面按用户在左边选择的节点来展示监控信息.例如如果用户选择的是物理视图中的一个根节点,如192.168.0.87.则右边的界面上就会显示目标机器的状态以及运行在目标机器上进程的状态.而控制按扭则分别用于启动/关闭/强杀一个或一组服务.
+
+下面简单的介绍下系统的实现.
+
+首先所有的监控数据,管理系统的用户及权限数据,服务器配置数据都被保存到一台中央ssdb服务上.
+
+每台物理机器运行一个daemon服务,每隔一秒收集机器状态信息和上面运行的服务信息并将信息发送到中心ssdb服务上.同时daemon上启动一个简单的http服务,用于处理发送到这台机器上的操作请求.
+
+下面是daemon的代码:
+
+    local Sche = require "lua.sche"
+    local Redis = require "lua.redis"
+    local Cjson = require "cjson"
+
+    local deployment={
+        {groupname="central",service={
+                    {type="ssdb-server",logicname="ssdb-server",conf="ssdb.conf",ip="192.168.0.87"},
+            }
+        },
+        {groupname="group1",service={
+                {type="groupserver",logicname="groupserver",ip="192.168.0.87",port="8010"},
+                {type="gameserver",logicname="gameserver",ip="192.168.0.87",port="8011"},
+                {type="gateserver",logicname="gateserver",ip="192.168.0.87",port="8012"},
+            }
+        },	
+        {groupname="group2",service={
+                {type="groupserver",logicname="groupserver",ip="192.168.0.88",port="8010"},
+                {type="gameserver",logicname="gameserver",ip="192.168.0.88",port="8011"},
+                {type="gateserver",logicname="gateserver",ip="192.168.0.88",port="8012"},
+            }
+        },
+    }
+
+    local function split(s,separator)
+        local ret = {}
+        local initidx = 1
+        local spidx
+        while true do
+            spidx = string.find(s,separator,initidx)
+            if not spidx then
+                break
+            end
+            table.insert(ret,string. sub(s,initidx,spidx-1))
+            initidx = spidx + 1
+        end
+        if initidx ~= string.len(s) then
+            table.insert(ret,string. sub(s,initidx))
+        end
+        return ret
+    end
+
+    local err,toredis = Redis.Connect("127.0.0.1",6379,function () print("disconnected") end)
+    if not err then
+        toredis:Command("set deployment " .. Cjson.encode(deployment))
+        AddTopFilter("distrilua")
+        AddTopFilter("ssdb-server")
+        while true do
+            local machine_status = Top()
+            print(machine_status)
+            local tb = split(machine_status,"\n")
+            local machine = {}
+            local i = 1
+            while i <= #tb do
+                if tb[i] ~= "process_info" then
+                    table.insert(machine,tb[i])
+                else
+                    i = i + 1	
+                    break
+                end
+                i = i + 1
+            end
+            local process = {}
+            while i <= #tb do
+                if tb[i] ~= "" then
+                    local tmp = {}
+                    local cols = split(tb[i],",")
+                    for k,v in pairs(cols) do
+                        local keyvals = split(v,":")
+                        tmp[keyvals[1]] = keyvals[2];
+                    end
+                    table.insert(process,tmp)
+                end
+                i = i + 1	
+            end
+
+
+            local str = string.format("hmset MachineStatus 192.168.0.87 %s",CBase64.encode(Cjson.encode({machine,process})))
+            toredis:Command(str)
+            --toredis:Command("set machine " .. CBase64.encode(Cjson.encode(machine)))
+            --toredis:Command("set process " .. CBase64.encode(Cjson.encode(process)))			
+            Sche.Sleep(1000)
+        end
+    else
+        Exit()
+    end
+    
+daemon服务运行在distri.lua环境之上,所以是用lua编写的.
+
+这段代码首先定义了一个叫做`deployment`的lua表,这个表就是服务器组的逻辑和物理配置信息.这个配置表将会被转换成json字符串并保存到ssdb的deployment字段中.之后尝试连接ssdb服务,如果连接成功则添加两个信息收集的过滤器`ssdb-server`和`distrilua`添加了这两个过滤器之后每轮循环调用`Top`函数收集信息的时候就只会收集进程名为`ssdb-server`和`distrilua`的进程的信息.收集到数据之后经过一些处理然后转换成json字符串接着保存到ssdb的MachineStatus相关对象的ip下面.
+
+http相关的处理在这里尚未实现所以暂时不介绍.
+
+
+接下来是manage.php,这个是用户控制界面的文件.这个文件使用了名为webix的js ui库.
+
+			function fetchdata(){
+				createXMLHttpRequest();
+				var url="info.php";
+				xmlHttp.open("GET",url,true);
+				xmlHttp.setRequestHeader("Content-Type","application/x-www-form-urlencoded; charset=UTF-8");		
+				xmlHttp.onreadystatechange = callback;
+				xmlHttp.send(null);
+			}
+            
+			function callback(){
+				if(xmlHttp.readyState == 4){
+					if(xmlHttp.status == 200){
+						var info = JSON.parse(xmlHttp.responseText);
+						var deploydata = info.deployment;
+						var machinedata = info.machine_status;																
+						if(firstrun){
+							webix.message("first");
+							buildDeployPhyTree(deploydata);
+							buildPhyTree(machinedata);
+							buildPhyView();	
+							buildDeployLogTree(deploydata);
+							buildLogicalTree();
+							buildLogView();
+						}else{
+							buildPhyTree(machinedata);
+							buildLogicalTree();
+							updatePhyView();
+							updateLogView();
+						}
+						ShowStatus();				
+						firstrun = false;
+						setTimeout("fetchdata()",1000);
+					}
+				}
+			}
+            
+这个文件的关键部分是这两个函数,`fetchdata`用于向服务器请求数据.这个请求被发往info.php页面.数据受到之后在`callback`中将数据转换成json对象然后根据数据构建视图.最后设置一个1秒钟的超时,超时之后继续向服务器请求数据.
+
+
+接下来我们看下info.php:
+
+    <?php
+    header("cache-control:no-cache,must-revalidate");
+    header("Content-Type:text/html;charset=utf8");
+
+    function split_line($input,$separator){
+        $ret = array();
+        $line = strtok($input,$separator);
+        while($line != ""){
+            array_push($ret,$line);
+            $line = strtok($separator);
+        }
+        return $ret;
+    }
+    $redis = new Redis();
+    $redis->connect('127.0.0.1', 6379);
+    $deployment = $redis->get('deployment');
+    $machine_status = $redis->hGetAll('MachineStatus');
+    $outputstr = "{\"deployment\":$deployment,\"machine_status\":[";
+    $first = true;
+    while(list($ip,$info) = each($machine_status)){
+        if($first){
+            $first = false;
+        }else{
+            $outputstr = $outputstr + ",";
+        }
+        $outputstr = $outputstr . "{\"ip\":\"$ip\",\"status\":" . base64_decode($info) . "}";
+    }
+    $outputstr = $outputstr . "]}";
+    echo $outputstr;
+    ?>
+    
+处理相当简单,受到请求后向ssdb请求数据,然后将数据组合成一个json字符串返回给客户端.
+
+
+感兴趣的朋友可以关注[https://github.com/sniperHW/distri.lua](https://github.com/sniperHW/distri.lua),在examples目录下找到相关的文件.
