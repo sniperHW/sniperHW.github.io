@@ -159,7 +159,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 * 对任意一个CPU,它所发起的有依赖关系的访存操作会被按序发射到内存系统,这意味对于:
     
-        ACCESS_ONCE(Q) = P; smp_read_barrier_depends(); D = ACCESS_ONCE(*Q);
+	ACCESS_ONCE(Q) = P; smp_read_barrier_depends(); D = ACCESS_ONCE(*Q);
 
     一定会以如下顺序发射内存操作:
     
@@ -169,7 +169,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
     
 * 对某个CPU自身而言,对重叠的loads和stores是保证次序的,这意味对于:
 
-        a = ACCESS_ONCE(*X); ACCESS_ONCE(*X) = b;
+     	a = ACCESS_ONCE(*X); ACCESS_ONCE(*X) = b;
 
     一定会以如下顺序发射内存操作:
     
@@ -204,23 +204,30 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 	
 * 必须假定重叠的内存访问被合并或丢弃,这意味对于:
 
-    X = *A; Y = *(A + 4);
+
+    	X = *A; Y = *(A + 4);
+
     
     以下任意一组次序都是可能的: 		
+
 
 	X = LOAD *A; Y = LOAD *(A + 4);
 	Y = LOAD *(A + 4); X = LOAD *A;
 	{X, Y} = LOAD {*A, *(A + 4) };
+
 	
 	而对于:
 	
+	
 	*A = X; *(A + 4) = Y;
 	
+    
     以下任意一组次序都是可能的: 
     
 	STORE *A = X; STORE *(A + 4) = Y;
 	STORE *(A + 4) = Y; STORE *A = X;
 	STORE {*A, *(A + 4) } = {X, Y};
+	
 	
 #2 什么是内存屏障?
 
