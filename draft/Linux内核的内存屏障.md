@@ -146,7 +146,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
     *A = 5;
     x = *D;
 	
-但是上面的操作次序可以被重排成以下的任意一个次序:
+但是上面的操作次序可以被重排成以下的任一序列:
 
     STORE *A = 5, x = LOAD *D
     x = LOAD *D, STORE *A = 5
@@ -157,21 +157,23 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 以下是CPU可以提供的最低保证:
 
-* 对任意一个CPU,它所发起的有依赖关系的访存操作会被按序发射到内存系统,这意味对于:
+* 对任意一个CPU,它所发起的有依赖关系的访存操作会被按序发送到内存系统,这意味对于:
     
-	ACCESS_ONCE(Q) = P; smp_read_barrier_depends(); D = ACCESS_ONCE(*Q);
+        ACCESS_ONCE(Q) = P;
+        smp_read_barrier_depends();
+        D = ACCESS_ONCE(*Q);
 
-    一定会以如下顺序发射内存操作:
+    一定会以如下序列执行:
     
         Q = LOAD P, D = LOAD *Q
     
     在多数系统上,`smp_read_barrier_depends()`什么也不做,但他在DEC Alpha上是必须的.ACCESS_ONCE()则用于防止编译器乱序.注意通常你应该使用类似`rcu_dereference()`的调用来替代`smp_read_barrier_depends()`.
     
-* 对某个CPU自身而言,对重叠的loads和stores是保证次序的,这意味对于:
+* 对某个CPU自身而言,重叠的loads和stores是保证次序的,这意味对于:
 
      	a = ACCESS_ONCE(*X); ACCESS_ONCE(*X) = b;
 
-    一定会以如下顺序发射内存操作:
+    一定会以如下序列执行:
     
         a = LOAD *X, STORE *X = b
     
@@ -179,7 +181,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
     
         ACCESS_ONCE(*X) = c; d = ACCESS_ONCE(*X);
 	
-    一定会以如下顺序发射内存操作:
+    一定会以如下序列执行:
     
         STORE *X = c, d = LOAD *X
 	
@@ -189,11 +191,11 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 * 对于没有被`ACCESS_ONCE()`保护的内存引用,不能假定编译器编译出来的指令与代码顺序一致.
 
-* 不能假定独立的loads和stores会被以代码顺序发射到内存系统,这意味着对于:
+* 不能假定独立的loads和stores会被以代码顺序被执行,这意味着对于:
 
         X = *A; Y = *B; *D = Z;
 	
-	以下任意一组发射顺序都是可能的:
+	以下任意一组操作序列都是可能:
 	
         X = LOAD *A,  Y = LOAD *B,  STORE *D = Z
         X = LOAD *A,  STORE *D = Z, Y = LOAD *B
@@ -204,29 +206,23 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 	
 * 必须假定重叠的内存访问被合并或丢弃,这意味对于:
 
-
     	X = *A; Y = *(A + 4);
 
-    
-    以下任意一组次序都是可能的: 		
+    以下任意一组操作序列都是可能的: 		
 
+        X = LOAD *A; Y = LOAD *(A + 4);
+        Y = LOAD *(A + 4); X = LOAD *A;
+        {X, Y} = LOAD {*A, *(A + 4) };
 
-	X = LOAD *A; Y = LOAD *(A + 4);
-	Y = LOAD *(A + 4); X = LOAD *A;
-	{X, Y} = LOAD {*A, *(A + 4) };
-
+    而对于:
 	
-	而对于:
-	
-	
-	*A = X; *(A + 4) = Y;
-	
+        *A = X; *(A + 4) = Y;
+	    
+    以下任意一组操作序列都是可能出现: 
     
-    以下任意一组次序都是可能的: 
-    
-	STORE *A = X; STORE *(A + 4) = Y;
-	STORE *(A + 4) = Y; STORE *A = X;
-	STORE {*A, *(A + 4) } = {X, Y};
+        STORE *A = X; STORE *(A + 4) = Y;
+        STORE *(A + 4) = Y; STORE *A = X;
+        STORE {*A, *(A + 4) } = {X, Y};
 	
 	
 #2 什么是内存屏障?
