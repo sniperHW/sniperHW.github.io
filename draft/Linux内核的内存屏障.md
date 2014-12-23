@@ -542,7 +542,7 @@ site: https://www.cl.cam.ac.uk/~pes20/ppcmem/index.html.
 
 总结:
 
-* 控制依赖可以使得前面的load和随后与这个load相关的store按序执行.但是,它不保证其它的操作也能按序执行:前面load和其后的load,以及前面store和其后的其他操作.如果你要保证其他操作的有序性请使用smb_rmb(),smp_wmb().对于前面store后跟load的情况还可以使用smp_mb().
+* 控制依赖可以使得前面的load和随后与这个load相关的store按序执行.但是,它不保证其它的操作也能按序执行:前面load和其后的load,以及前面store和其后的其它操作.如果你要保证其它操作的有序性请使用smb_rmb(),smp_wmb().对于前面store后跟load的情况还可以使用smp_mb().
 
 * 如果if语句的两个分支都以对同一个变量执行store起始,那么应该在分支语句的起始处添加barrier().
 
