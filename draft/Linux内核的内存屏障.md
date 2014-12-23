@@ -325,7 +325,9 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
      [*]  要想了解总线控制DMA和一致性请阅读: 
             
      Documentation/PCI/pci.txt
+     
      Documentation/DMA-API-HOWTO.txt
+     
      Documentation/DMA-API.txt
          
 ##数据依赖屏障
@@ -419,7 +421,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
         	
 所以千万别漏了ACCESS_ONCE().
  
-以下代码尝试强制if分支中两个单独的store操作按序执行:
+以下代码尝试强制if语句中两个分支的store操作能按序执行:
 
         	q = ACCESS_ONCE(a);
         	if (q) {
@@ -456,7 +458,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
         		do_something_else();
         	}
         	
-总之,在没有显式使用内存屏障的情况下,一个if语句能保证按序执行的条件是,各分支的store操作不同,例如:
+总之,在没有显式使用内存屏障的情况下,一个if语句能保证按序执行的条件是,两个分支中的store操作是不同的,例如:
 
         	q = ACCESS_ONCE(a);
         	if (q) {
@@ -511,5 +513,35 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
         	q = ACCESS_ONCE(a);
         	ACCESS_ONCE(b) = 1;
         	
+这个例子强调了,你必须确保编译器无法误解你的代码.更一般的,ACCESS_ONCE()确实能强制编译器不把load遗漏掉,但却无法强制编译器使用load的结果.
+
+最后,控制依赖是无法传递的.这通过以下两个相关的示例来展示,在这两个示例中,x和y的初始值都是0:
+
+        	CPU 0                     CPU 1
+        	=====================     =====================
+        	r1 = ACCESS_ONCE(x);      r2 = ACCESS_ONCE(y);
+        	if (r1 > 0)               if (r2 > 0)
+        	  ACCESS_ONCE(y) = 1;       ACCESS_ONCE(x) = 1;
+        
+        	assert(!(r1 == 1 && r2 == 1));        	
+
+上面的示例永远不会触发assert().但是,假如依赖控制是可传递的, 那么增加一个CPU并执行如下代码,那么断言也保证不会触发:       		        	        	        	        	              
+
+        CPU 2
+        	=====================
+        	ACCESS_ONCE(x) = 2;
+        
+        	assert(!(r1 == 2 && r2 == 1 && x == 2)); /* FAILS!!! */
         	
-        		        	        	        	        	              
+但是因为控制依赖不具有传递性,所以上面示例中,第3个CPU中的断言可能会触发.如果你需要以上3CPU的例子能按序执行,你需要在CPU 0和CPU 1的load和store操作之间添加smp_mb(),也就是在if语句的前面或后面.
+
+以上两个示例是下面这篇论文中的LB和WWC石蕊测试(立马知道结果的测试):
+
+http://www.cl.cam.ac.uk/users/pes20/ppc-supplemental/test6.pdf and this
+site: https://www.cl.cam.ac.uk/~pes20/ppcmem/index.html.
+
+总结:
+
+* 
+
+        	
