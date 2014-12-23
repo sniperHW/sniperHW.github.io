@@ -94,11 +94,11 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 例如考虑如下操作序列:
 
-	CPU 1		CPU 2
+	CPU 1		      CPU 2
 	===============	===============
-	{ A == 1; B == 2 }
-	A = 3;		x = B;
-	B = 4;		y = A;       
+	     { A == 1; B == 2 }
+	A = 3;		     x = B;
+	B = 4;		     y = A;       
          	
 
 对于抽象模型中央的内存系统来说,它接收到的内存操作顺序可以被排列成如下24种不同的组合:
@@ -124,11 +124,11 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 作为这种情况的例子,让我们考虑如下操作序列:
 
-	CPU 1		CPU 2
+	CPU 1		      CPU 2
 	===============	===============
 	{ A == 1, B == 2, C = 3, P == &A, Q == &C }
-	B = 4;		Q = P;
-	P = &B		D = *Q;
+	B = 4;		      Q = P;
+	P = &B		      D = *Q;
 	           	           
 这里存在一个明显的数据依赖,载入到D中的数据依赖于CPU2执行`Q=P`时,P所指向的内存地址.当这些操作执行完之后,下面的任何一组结果都是可能的:
 
@@ -334,14 +334,14 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 对数据依赖屏障的需求有点微妙,并不总能明显的发现需要使用数据依赖屏障.作为示例,请考虑以下事件序列:
 
-        	CPU 1		      CPU 2
+        	CPU 1		            CPU 2
         	===============	      ===============
         	{ A == 1, B == 2, C = 3, P == &A, Q == &C }
         	B = 4;
         	<write barrier>
         	ACCESS_ONCE(P) = &B
-        			      Q = ACCESS_ONCE(P);
-        			      D = *Q;
+        			                 Q = ACCESS_ONCE(P);
+        			                 D = *Q;
 
 这里存在一个很明显的数据依赖关系 ,在这些事件最后,Q要么等于&A要么等于&B,也就是:
 
@@ -356,15 +356,15 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 为了处理这样的问题,可以将一个数据依赖或者更强的屏障插入到取地址和取数据之间:
 
-        	CPU 1		      CPU 2
+        	CPU 1		            CPU 2
         	===============	      ===============
         	{ A == 1, B == 2, C = 3, P == &A, Q == &C }
         	B = 4;
         	<write barrier>
         	ACCESS_ONCE(P) = &B
-        			      Q = ACCESS_ONCE(P);
-        			      <data dependency barrier>
-        			      D = *Q;
+        			                 Q = ACCESS_ONCE(P);
+        			                 <data dependency barrier>
+        			                 D = *Q;
 
 这样保证Q和D只能是前面的两种情形之一,而不可能出现第三种情形.
 
@@ -372,15 +372,15 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 另一种需要数据依赖屏障的情况是,从内存中读入一个数字,然后用这个数字作为下标访问数组:
 
-        	CPU 1		      CPU 2
+        	CPU 1		            CPU 2
         	===============	      ===============
         	{ M[0] == 1, M[1] == 2, M[3] = 3, P == 0, Q == 3 }
         	M[1] = 4;
         	<write barrier>
         	ACCESS_ONCE(P) = 1
-        			      Q = ACCESS_ONCE(P);
-        			      <data dependency barrier>
-        			      D = M[Q];
+        			                 Q = ACCESS_ONCE(P);
+        			                 <data dependency barrier>
+        			                 D = M[Q];
 
 数据依赖屏障对RCU系统而言非常重要.例如,include/linux/rcupdate.h中的rcu_assign_pointer()和rcu_dereference().这两个函数可以使得将RCU指针指向新对象的时候,不会出现新指向的对象没有完全初始化的情况. 
 
@@ -527,7 +527,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 
 上面的示例永远不会触发assert().但是,假如依赖控制是可传递的, 那么增加一个CPU并执行如下代码,那么断言也保证不会触发:       		        	        	        	        	              
 
-        CPU 2
+            CPU 2
         	=====================
         	ACCESS_ONCE(x) = 2;
         
@@ -542,6 +542,38 @@ site: https://www.cl.cam.ac.uk/~pes20/ppcmem/index.html.
 
 总结:
 
-* 
+* 控制依赖可以使得前面的load和随后与这个load相关的store按序执行.但是,它不保证其它的操作也能按序执行:前面load和其后的load,以及前面store和其后的其他操作.如果你要保证其他操作的有序性请使用smb_rmb(),smp_wmb().对于前面store后跟load的情况还可以使用smp_mb().
 
-        	
+* 如果if语句的两个分支都以对同一个变量执行store起始,那么应该在分支语句的起始处添加barrier().
+
+* 达成控制依赖的条件是,在load和随后的store之间至少要有一个运行时条件判断语句,且那个条件判断语句使用了前面load操作的值.如果编译器把条件判断语句优化掉了,那么它也可能打乱load和store的顺序.正确使用ACCESS_ONCE()可以帮助防止必要的条件判断语句被编译器优化.
+
+* 需要小心防止编译器优化把控制依赖消除.正确的使用ACCESS_ONCE()或barrier()可以帮助防止这种情况的发生.更多的信息请参考编译器屏障.
+
+* 控制依赖不具备传递性.如果需要传递性请使用smp_mb().
+
+##SMP屏障配对
+
+对于CPU之间交互的情况,特定类型的内存屏障必须配对使用.缺乏适当配对的情况几乎总是错误的.
+
+通用屏障之间互相配对,虽然它也可以与几乎所有其他类型的屏障配对,但这会失去可传递性.获取屏障与释放屏障配对,同时他们也可以与其它屏障配对,包括通用屏障.一个写屏障与数据依赖屏障,获取屏障,释放屏障,读屏障,或通用屏障配对.类似的,一个读屏障或数据依赖屏障与写屏障,获取屏障,释放屏障或通用屏障配对:
+
+        	CPU 1		            CPU 2
+        	===============	      ===============
+        	ACCESS_ONCE(a) = 1;
+        	<write barrier>
+        	ACCESS_ONCE(b) = 2;      x = ACCESS_ONCE(b);
+        			                 <read barrier>
+        			                 y = ACCESS_ONCE(a);
+
+或:
+
+        	CPU 1		            CPU 2
+        	===============	      ===============================
+        	a = 1;
+        	<write barrier>
+        	ACCESS_ONCE(b) = &a;     x = ACCESS_ONCE(b);
+        			                 <data dependency barrier>
+        			                 y = *x;
+
+基本上, 读屏障总是需要用在这些地方的, 尽管可以使用"弱"类型.     	
