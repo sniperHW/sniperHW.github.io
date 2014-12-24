@@ -950,7 +950,7 @@ CPU2就可以以正确的顺序感知到CPU1的操作所产生的效果:
 				     <read barrier>		 <general barrier>
 				     LOAD Y			     LOAD X
 
-这样的替换破坏了传递性:在CPU 2上,LOAD X返回1且LOAD Y返回0,在CPU 3上LOAD X返回0也是完全合法的.
+这样的替换会破坏传递性:在CPU 2上,LOAD X返回1且LOAD Y返回0,在CPU 3上LOAD X返回0也是完全合法的.
 
 关键在于,CPU 2上的读屏障使得它的两个LOAD按序执行,但不保证对CPU 1的STORE操作有任何影响.因此如果本例运行在一个CPU 1和CPU 2共享写缓冲或cache的系统上,CPU 2可能会提前访问到CPU 1写值.因此需要通用屏障确保所有CPU对CPU 1和CPU 2的访存顺序达成一致.
 
