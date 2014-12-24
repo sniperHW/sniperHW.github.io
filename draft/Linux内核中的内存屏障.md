@@ -22,7 +22,7 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 >- SMP屏障配对.
 >- 内存屏障举例.
 >- 读内存屏障VS内存预取.
->- Transitivity
+>- 传递性.
 
 >3 内核中的显式屏障.
 >- 编译器屏障.
@@ -813,7 +813,7 @@ CPU2就可以以正确的顺序感知到CPU1的操作所产生的效果:
         	  to be perceptible to CPU 2            +-------+       |       |
         	                                        :       :       +-------+
 
-CPU2可能在读屏障完成之后才感知到CPU1对A的更新效果:
+但是CPU 2也可能在读屏障结束之前就感知到CPU 1对A的更新:
 
         	+-------+       :      :                :       :
         	|       |       +------+                +-------+
@@ -838,7 +838,7 @@ CPU2可能在读屏障完成之后才感知到CPU1对A的更新效果:
         	                                        :       :       +-------+
 
 
-这保证了,如果CPU2 LOAD B得到B==2那么对第二个LOAD A一定会看到A==1.但对第一个LOAD A则没有这种保证;所以第一个LOAD可能得到A==0或A==1.
+这保证了,在CPU2上,如果LOAD B得到B==2那么对第二个LOAD A一定会得到A==1.但对第一个LOAD A则没有这种保证;所以第一个LOAD可能得到A==0或A==1.
 
 ##读内存屏障VS内存预取
 
@@ -903,4 +903,60 @@ CPU2可能在读屏障完成之后才感知到CPU1对A的更新效果:
         	                                        :       :       |       |
         	                                        :       :       +-------+
         				
-      								
+  
+  但是如果有来自其他CPU的更新或失效,那么预取的值将会被丢弃,并从内存中重新读取:
+
+		                                        :       :       +-------+
+	                                        +-------+       |       |
+	                                    --->| B->2  |------>|       |
+	                                        +-------+       | CPU 2 |
+	                                        :       :DIVIDE |       |
+	                                        +-------+       |       |
+	The CPU being busy doing a --->     --->| A->0  |~~~~   |       |
+	division speculates on the              +-------+   ~   |       |
+	LOAD of A                               :       :   ~   |       |
+	                                        :       :DIVIDE |       |
+	                                        :       :   ~   |       |
+	                                        :       :   ~   |       |
+	                                    rrrrrrrrrrrrrrrrr   |       |
+	                                        +-------+       |       |
+	The speculation is discarded --->   --->| A->1  |------>|       |
+	and an updated value is                 +-------+       |       |
+	retrieved                               :       :       +-------+
+
+##传递性
+
+传递性是对有序性非常直观的概念,真实的计算机系统通常不支持传递性.下面的例子展示了什么是传递性(或称为累积性):
+
+        	CPU 1			CPU 2			     CPU 3
+        	==============	=================	================
+        		{ X = 0, Y = 0 }
+        	STORE X=1		LOAD X			    STORE Y=1
+        				     <general barrier>	 <general barrier>
+        				     LOAD Y			     LOAD X
+
+假如在CPU 2上LOAD X返回1且LOAD Y返回0.这意味在某种意义上CPU 2的LOAD X跟在CPU 1的STORE X之后,且CPU 2的LOAD Y先于CPU 3的STORE Y.现在的问题是,CPU 3的LOAD X会返回0吗?
+
+因为CPU 2的LOAD X在某种意义上跟在CPU 1的STORE之后,很自然的会认为CPU 3的LOAD X也会返回1.这种期望是传递性的一个例子:如果CPU A上执行的LOAD跟在对相同变量执行LOAD的CPU B之后,那么CPU A的LOAD必须要么返回与CPU B的LOAD一样的值,要么返回比他更新的值.
+
+在Linux内核中,使用通用屏障可以保证传递性.因此在上面的示例中,如果在CPU 2上,LOAD X返回1且LOAD Y返回0,那么在CPU 3上LOAD X也1.
+
+但是,读/写屏障不保证传递性.假如我们将上例中CPU 2上的通用屏障替换或一个读屏障:
+
+	CPU 1			 CPU 2			     CPU 3
+	==============	==================	=================
+		      { X = 0, Y = 0 }
+	STORE X=1		 LOAD X			    STORE Y=1
+				     <read barrier>		 <general barrier>
+				     LOAD Y			     LOAD X
+
+这样的替换破坏了传递性:在CPU 2上,LOAD X返回1且LOAD Y返回0,在CPU 3上LOAD X返回0也是完全合法的.
+
+关键在于,CPU 2上的读屏障使得它的两个LOAD按序执行,但不保证对CPU 1的STORE操作有任何影响.因此如果本例运行在一个CPU 1和CPU 2共享写缓冲或cache的系统上,CPU 2可能会提前访问到CPU 1写值.因此需要通用屏障确保所有CPU对CPU 1和CPU 2的访存顺序达成一致.
+
+再次重申,如果你的代码依赖传递性,请自始至终使用通用屏障.
+
+
+				
+				
+  								
