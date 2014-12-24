@@ -1,7 +1,10 @@
 [原文](https://www.kernel.org/doc/Documentation/memory-barriers.txt)
 
 By: David Howells <dhowells@redhat.com>
+
 Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+
+翻译:sniperHW <huangweilook@21cn.com>
 
 目录:
 
@@ -839,4 +842,65 @@ CPU2可能在读屏障完成之后才感知到CPU1对A的更新效果:
 
 ##读内存屏障VS内存预取
 
-很多CPU会对LOAD操作进行内存预取:CPU提前发现需要从内存中读入数据,并且发现总线空闲(没有其他LOAD操作),于是CPU提前将数据载入,尽管指令的执行流还没到达LOAD的点上.这使得LOAD操作可能立即完成,因为CPU已经提前获得了要处理的数据.                				
+很多CPU会对LOAD操作进行内存预取:CPU提前发现需要从内存中读入数据,并且发现总线空闲(没有其他LOAD操作),于是CPU提前将数据载入,尽管指令的执行流还没到达LOAD的点上.这使得LOAD操作可能立即完成,因为CPU已经提前获得了要处理的数据.    
+
+最终被预取的值可能没机会使用,例如load所在的分支没被执行,这种情况下预取的值可能会直接丢弃,也可能被缓存供以后使用.
+
+考虑:
+
+        	CPU 1			CPU 2
+        	=======================	=======================
+        				LOAD B
+        				DIVIDE		} Divide instructions generally
+        				DIVIDE		} take a long time to perform
+        				LOAD A
+        
+看上去可能是这样:
+
+        	                                        :       :       +-------+
+        	                                        +-------+       |       |
+        	                                    --->| B->2  |------>|       |
+        	                                        +-------+       | CPU 2 |
+        	                                        :       :DIVIDE |       |
+        	                                        +-------+       |       |
+        	The CPU being busy doing a --->     --->| A->0  |~~~~   |       |
+        	division speculates on the              +-------+   ~   |       |
+        	LOAD of A                               :       :   ~   |       |
+        	                                        :       :DIVIDE |       |
+        	                                        :       :   ~   |       |
+        	Once the divisions are complete -->     :       :   ~-->|       |
+        	the CPU can then perform the            :       :       |       |
+        	LOAD with immediate effect              :       :       +-------+
+
+
+在第2个load之前放置一个读屏障或数据依赖屏障:
+
+        	CPU 1			CPU 2
+        	=======================	=======================
+        				LOAD B
+        				DIVIDE
+        				DIVIDE
+        				<read barrier>
+        				LOAD A            
+        				
+会强制依据使用的屏障类型来重新考虑如何使用预取的值.如果被预取的内存没有发生变化,那么预取的值就会被采用:
+
+        	                                        :       :       +-------+
+        	                                        +-------+       |       |
+        	                                    --->| B->2  |------>|       |
+        	                                        +-------+       | CPU 2 |
+        	                                        :       :DIVIDE |       |
+        	                                        +-------+       |       |
+        	The CPU being busy doing a --->     --->| A->0  |~~~~   |       |
+        	division speculates on the              +-------+   ~   |       |
+        	LOAD of A                               :       :   ~   |       |
+        	                                        :       :DIVIDE |       |
+        	                                        :       :   ~   |       |
+        	                                        :       :   ~   |       |
+        	                                    rrrrrrrrrrrrrrrr~   |       |
+        	                                        :       :   ~   |       |
+        	                                        :       :   ~-->|       |
+        	                                        :       :       |       |
+        	                                        :       :       +-------+
+        				
+        								
