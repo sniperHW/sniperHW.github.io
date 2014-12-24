@@ -17,8 +17,8 @@ Paul E. McKenney <paulmck@linux.vnet.ibm.com>
 >- 数据依赖屏障.
 >- 控制依赖.
 >- SMP屏障配对.
->- Examples of memory barrier sequences.
->- Read memory barriers vs load speculation.
+>- 内存屏障举例.
+>- 读内存屏障VS内存预取.
 >- Transitivity
 
 >3 内核中的显式屏障.
@@ -577,3 +577,266 @@ site: https://www.cl.cam.ac.uk/~pes20/ppcmem/index.html.
         			                 y = *x;
 
 基本上, 读屏障总是需要用在这些地方的, 尽管可以使用更"弱"的类型.     	
+
+[!] 注意,写屏障之前的store通常总是与写屏障或数据依赖屏障之后的load匹配,反之亦然:
+
+        	CPU 1                               CPU 2
+        	===================                 ===================
+        	ACCESS_ONCE(a) = 1;  }----   --->{  v = ACCESS_ONCE(c);
+        	ACCESS_ONCE(b) = 2;  }    \ /    {  w = ACCESS_ONCE(d);
+        	<write barrier>            \        <read barrier>
+        	ACCESS_ONCE(c) = 3;  }    / \    {  x = ACCESS_ONCE(a);
+        	ACCESS_ONCE(d) = 4;  }----   --->{  y = ACCESS_ONCE(b);
+        	
+        	
+##内存屏障举例
+
+第1,写屏障可以使得store操作部分有序,考虑如下事件序列:
+
+        	CPU 1
+        	=======================
+        	STORE A = 1
+        	STORE B = 2
+        	STORE C = 3
+        	<write barrier>
+        	STORE D = 4
+        	STORE E = 5
+
+这个操作序列会被有序的提交到内存一致性系统,但是系统中其它部分所感知到的顺序是无序集合{STORE A,STORE B,STORE C}中的事件先于无序集合{STORE D,STORE E}中的事件,但是各集合中事件的顺序可以是任意组合:
+
+        	+-------+       :      :
+        	|       |       +------+
+        	|       |------>| C=3  |     }     /\
+        	|       |  :    +------+     }-----  \  -----> Events perceptible to
+        	|       |  :    | A=1  |     }        \/       the rest of the system
+        	|       |  :    +------+     }
+        	| CPU 1 |  :    | B=2  |     }
+        	|       |       +------+     }
+        	|       |   wwwwwwwwwwwwwwww }   <--- At this point the write barrier
+        	|       |       +------+     }        requires all stores prior to the
+        	|       |  :    | E=5  |     }        barrier to be committed before
+        	|       |  :    +------+     }        further stores may take place
+        	|       |------>| D=4  |     }
+        	|       |       +------+
+        	+-------+       :      :
+        	                   |
+        	                   | Sequence in which stores are committed to the
+        	                   | memory system by CPU 1
+        	                   V
+        
+ 第2,数据依赖屏障可以使得有数据依赖的load操作部分有序,考虑如下事件序列:         
+ 
+ 
+         	CPU 1			         CPU 2
+        	=======================	=======================
+        		{ B = 7; X = 9; Y = 8; C = &Y }
+        	STORE A = 1
+        	STORE B = 2
+        	<write barrier>
+        	STORE C = &B		       LOAD X
+        	STORE D = 4		        LOAD C (gets &B)
+        				               LOAD *C (reads B)      	
+        				
+在CPU2没有干预的情况下, 感知到CPU1的操作产生效果的顺序可能是随机的,尽管CPU1使用了写屏障:
+
+        	+-------+       :      :                :       :
+        	|       |       +------+                +-------+  | Sequence of update
+        	|       |------>| B=2  |-----       --->| Y->8  |  | of perception on
+        	|       |  :    +------+     \          +-------+  | CPU 2
+        	| CPU 1 |  :    | A=1  |      \     --->| C->&Y |  V
+        	|       |       +------+       |        +-------+
+        	|       |   wwwwwwwwwwwwwwww   |        :       :
+        	|       |       +------+       |        :       :
+        	|       |  :    | C=&B |---    |        :       :       +-------+
+        	|       |  :    +------+   \   |        +-------+       |       |
+        	|       |------>| D=4  |    ----------->| C->&B |------>|       |
+        	|       |       +------+       |        +-------+       |       |
+        	+-------+       :      :       |        :       :       |       |
+        	                               |        :       :       |       |
+        	                               |        :       :       | CPU 2 |
+        	                               |        +-------+       |       |
+        	    Apparently incorrect --->  |        | B->7  |------>|       |
+        	    perception of B (!)        |        +-------+       |       |
+        	                               |        :       :       |       |
+        	                               |        +-------+       |       |
+        	    The load of X holds --->    \       | X->9  |------>|       |
+        	    up the maintenance           \      +-------+       |       |
+        	    of coherence of B             ----->| B->2  |       +-------+
+        	                                        +-------+
+        	                                        :       :
+        
+在上面的示例中,CPU2得到B=7(LOAD C),经管在代码顺序上LOAD *C在LOAD C的后面.
+
+如果CPU2在LOAD C和LOAD *C之间插入一个数据依赖屏障:
+
+        	CPU 1			          CPU 2
+        	=======================	=======================
+        		{ B = 7; X = 9; Y = 8; C = &Y }
+        	STORE A = 1
+        	STORE B = 2
+        	<write barrier>
+        	STORE C = &B		       LOAD X
+        	STORE D = 4		        LOAD C (gets &B)
+        				               <data dependency barrier>
+        				               LOAD *C (reads B)       				
+ 
+ 就会发生下面的事情:
+ 
+         +-------+       :      :                :       :
+        	|       |       +------+                +-------+
+        	|       |------>| B=2  |-----       --->| Y->8  |
+        	|       |  :    +------+     \          +-------+
+        	| CPU 1 |  :    | A=1  |      \     --->| C->&Y |
+        	|       |       +------+       |        +-------+
+        	|       |   wwwwwwwwwwwwwwww   |        :       :
+        	|       |       +------+       |        :       :
+        	|       |  :    | C=&B |---    |        :       :       +-------+
+        	|       |  :    +------+   \   |        +-------+       |       |
+        	|       |------>| D=4  |    ----------->| C->&B |------>|       |
+        	|       |       +------+       |        +-------+       |       |
+        	+-------+       :      :       |        :       :       |       |
+        	                               |        :       :       |       |
+        	                               |        :       :       | CPU 2 |
+        	                               |        +-------+       |       |
+        	                               |        | X->9  |------>|       |
+        	                               |        +-------+       |       |
+        	  Makes sure all effects --->   \   ddddddddddddddddd   |       |
+        	  prior to the store of C        \      +-------+       |       |
+        	  are perceptible to              ----->| B->2  |------>|       |
+        	  subsequent loads                      +-------+       |       |
+        	                                        :       :       +-------+
+        
+第3,读屏障可以使得load操作部分有序,考虑如下事件序列:
+
+        	CPU 1			          CPU 2
+        	=======================	=======================
+        		{ A = 0, B = 9 }
+        	STORE A=1
+        	<write barrier>
+        	STORE B=2
+        				               LOAD B
+        				               LOAD A
+
+在CPU2没有干预的情况下, 感知到CPU1的操作产生效果的顺序可能是随机的,尽管CPU1使用了写屏障:
+
+        	+-------+       :      :                :       :
+        	|       |       +------+                +-------+
+        	|       |------>| A=1  |------      --->| A->0  |
+        	|       |       +------+      \         +-------+
+        	| CPU 1 |   wwwwwwwwwwwwwwww   \    --->| B->9  |
+        	|       |       +------+        |       +-------+
+        	|       |------>| B=2  |---     |       :       :
+        	|       |       +------+   \    |       :       :       +-------+
+        	+-------+       :      :    \   |       +-------+       |       |
+        	                             ---------->| B->2  |------>|       |
+        	                                |       +-------+       | CPU 2 |
+        	                                |       | A->0  |------>|       |
+        	                                |       +-------+       |       |
+        	                                |       :       :       +-------+
+        	                                 \      :       :
+        	                                  \     +-------+
+        	                                   ---->| A->1  |
+        	                                        +-------+
+        	                                        :       :
+
+
+如果CPU2在LOAD B和LOAD A之间插入一个读屏障:
+
+        	CPU 1			          CPU 2
+        	=======================	=======================
+        		{ A = 0, B = 9 }
+        	STORE A=1
+        	<write barrier>
+        	STORE B=2
+        				               LOAD B
+        				               <read barrier>
+        				               LOAD A               	
+        				
+CPU2就可以以正确的顺序感知到CPU1的操作所产生的效果:
+
+        	+-------+       :      :                :       :
+        	|       |       +------+                +-------+
+        	|       |------>| A=1  |------      --->| A->0  |
+        	|       |       +------+      \         +-------+
+        	| CPU 1 |   wwwwwwwwwwwwwwww   \    --->| B->9  |
+        	|       |       +------+        |       +-------+
+        	|       |------>| B=2  |---     |       :       :
+        	|       |       +------+   \    |       :       :       +-------+
+        	+-------+       :      :    \   |       +-------+       |       |
+        	                             ---------->| B->2  |------>|       |
+        	                                |       +-------+       | CPU 2 |
+        	                                |       :       :       |       |
+        	                                |       :       :       |       |
+        	  At this point the read ---->   \  rrrrrrrrrrrrrrrrr   |       |
+        	  barrier causes all effects      \     +-------+       |       |
+        	  prior to the storage of B        ---->| A->1  |------>|       |
+        	  to be perceptible to CPU 2            +-------+       |       |
+        	                                        :       :       +-------+        				
+
+为了更完全的说明,考虑如下在两个LOAD A之间插入一个读屏障的示例:
+
+        	CPU 1			          CPU 2
+        	=======================	=======================
+        		{ A = 0, B = 9 }
+        	STORE A=1
+        	<write barrier>
+        	STORE B=2
+        				              LOAD B
+        				              LOAD A [first load of A]
+        				              <read barrier>
+        				              LOAD A [second load of A]        							
+        				
+虽然两个LOAD A都发生在LOAD B的后面,他们还是有可能得到不一样的值:
+
+        	+-------+       :      :                :       :
+        	|       |       +------+                +-------+
+        	|       |------>| A=1  |------      --->| A->0  |
+        	|       |       +------+      \         +-------+
+        	| CPU 1 |   wwwwwwwwwwwwwwww   \    --->| B->9  |
+        	|       |       +------+        |       +-------+
+        	|       |------>| B=2  |---     |       :       :
+        	|       |       +------+   \    |       :       :       +-------+
+        	+-------+       :      :    \   |       +-------+       |       |
+        	                             ---------->| B->2  |------>|       |
+        	                                |       +-------+       | CPU 2 |
+        	                                |       :       :       |       |
+        	                                |       :       :       |       |
+        	                                |       +-------+       |       |
+        	                                |       | A->0  |------>| 1st   |
+        	                                |       +-------+       |       |
+        	  At this point the read ---->   \  rrrrrrrrrrrrrrrrr   |       |
+        	  barrier causes all effects      \     +-------+       |       |
+        	  prior to the storage of B        ---->| A->1  |------>| 2nd   |
+        	  to be perceptible to CPU 2            +-------+       |       |
+        	                                        :       :       +-------+
+
+CPU2可能在读屏障完成之后才感知到CPU1对A的更新效果:
+
+        	+-------+       :      :                :       :
+        	|       |       +------+                +-------+
+        	|       |------>| A=1  |------      --->| A->0  |
+        	|       |       +------+      \         +-------+
+        	| CPU 1 |   wwwwwwwwwwwwwwww   \    --->| B->9  |
+        	|       |       +------+        |       +-------+
+        	|       |------>| B=2  |---     |       :       :
+        	|       |       +------+   \    |       :       :       +-------+
+        	+-------+       :      :    \   |       +-------+       |       |
+        	                             ---------->| B->2  |------>|       |
+        	                                |       +-------+       | CPU 2 |
+        	                                |       :       :       |       |
+        	                                 \      :       :       |       |
+        	                                  \     +-------+       |       |
+        	                                   ---->| A->1  |------>| 1st   |
+        	                                        +-------+       |       |
+        	                                    rrrrrrrrrrrrrrrrr   |       |
+        	                                        +-------+       |       |
+        	                                        | A->1  |------>| 2nd   |
+        	                                        +-------+       |       |
+        	                                        :       :       +-------+
+
+
+这保证了,如果CPU2 LOAD B得到B==2那么对第二个LOAD A一定会看到A==1.但对第一个LOAD A则没有这种保证;所以第一个LOAD可能得到A==0或A==1.
+
+##读内存屏障VS内存预取
+
+很多CPU会对LOAD操作进行内存预取:CPU提前发现需要从内存中读入数据,并且发现总线空闲(没有其他LOAD操作),于是CPU提前将数据载入,尽管指令的执行流还没到达LOAD的点上.这使得LOAD操作可能立即完成,因为CPU已经提前获得了要处理的数据.                				
