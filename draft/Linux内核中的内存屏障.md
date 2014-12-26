@@ -982,26 +982,72 @@ barrier()函数回产生如下影响:
 
 ACCESS_ONCE()用于防止一些优化手段,这样的优化手段在一个单线程的运行环境下是完全安全的,但是如果把代码放在多线程环境下运行就会产生严重的错误.下面列举会产生这种问题的优化:
 
-* 编译器可以对在同一变量上的load和store操作重排序,在某些情况下,CPU也会这么做.这意味:
+* 编译器有权对在同一变量上的load和store操作重排序,在某些情况下,CPU也会这么做.这意味:
 
         	a[0] = x;
         	a[1] = x;
 
-的实际执行顺序可能是`a[1] = x;a[0] = x;`.要想防止编译器或CPU执行这种重排序可以象下面这样:
+   的实际执行顺序可能是`a[1] = x;a[0] = x;`.要想防止编译器或CPU执行这种重排序可以象下面这样:
 
         	a[0] = ACCESS_ONCE(x);
         	a[1] = ACCESS_ONCE(x);
 
-简单来说,ACCESS_ONCE()为多个CPU访问同一变量提供了cache一致性.
+   简单来说,ACCESS_ONCE()为多个CPU访问同一变量提供了cache一致性.
 
-* 编译器可以将两个对同一变量的load操作合并.这使得编译器可以优化如下代码:
+* 编译器有权将两个对同一变量的load操作合并.编译器可以如下代码:
 
         	while (tmp = a)
         		do_something_with(tmp);
         		
+   优化成,虽然在某种意义上是单线程安全的,但显然违背开发者意图的代码:
 
+        	if (tmp = a)
+        		for (;;)
+        			do_something_with(tmp);
 
+   使用ACCESS_ONCE()可以防止编译器做这样的优化:
 
+        	while (tmp = ACCESS_ONCE(a))
+        		do_something_with(tmp);
+
+* 编译器有权重载一个变量,例如,寄存器紧缺会阻碍编译器将它感兴趣的数据都保存在寄存器中.所以编译器可能因此将tmp变量给优化掉:
+
+        	while (tmp = a)
+        		do_something_with(tmp);
+
+   这会产生如下代码,在单线程执行的时候是完全安全的,但在多线程并发执行的情况下会导致严重错误:
+
+        	while (a)
+        		do_something_with(a);
+        		
+   例如,假如a是一个在多线程之间共享的变量,如果在while和调用do_something_with()之间,a被其它线程设置为0,以上的优化代码就会出现将0传给do_something_with()的情况.
+
+   再一次,我们使用ACCESS_ONCE()放置编译器做这样的优化:
+
+        	while (tmp = ACCESS_ONCE(a))
+        		do_something_with(tmp);        		
+
+   注意,如果编译器发现寄存器不足,它会把tmp保存在栈上.保存和之后的载入产生会开销是编译器选择重载变量的原因.这对于单线程代码是安全的,所以你  需要告诉编译器在什么情况下这样是不安全的,阻止它做类似的优化.
+
+* 如果编译器可以提前预知一个值,那么它有权将相关的load操作删除.例如,如果编译器可以预测a永远是0,那么它就会将如下代码优化:
+
+        	while (tmp = a)
+        		do_something_with(tmp);  				
 				
-				
-  								
+    成:
+    
+        do { } while (0);
+        
+    这个优化对单线程代码来说非常有效,它减少了一个load和一个分支判断.但如果a是一个在多线程间共享的变量,就会出现严重的问题.使用ACCESS_ONCE()可以防止编译器做类似优化:
+    
+            	while (tmp = ACCESS_ONCE(a))
+        		  do_something_with(tmp);          								
+
+    但请注意,编译器会密切关注你是如何使用用ACCESS_ONCE()载入的值.例如,假设你写下如下代码,且MAX是被定义为1的宏变量:
+    
+            	while ((tmp = ACCESS_ONCE(a)) % MAX)
+        		  do_something_with(tmp);
+        		  
+    那么,编译器知道对任何数应用%都会导致结果为0,那边编译器又可以把这段代码优化掉了.(与上一段被优化的代码的区别在,load a还是执行的)
+    
+             		  
