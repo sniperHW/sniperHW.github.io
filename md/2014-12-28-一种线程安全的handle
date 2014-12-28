@@ -1,0 +1,82 @@
+对象引用的正确性在多线程环境下是一个复杂的问题,[请参考，处理由引用计数引起的泄漏](http://sniperhw.github.io/#!/2012/12/07/处理由引用计数引起的泄漏).简单来说,我们应该尽量减少使用强引用,否则将有可能产生[处理由引用计数引起的泄漏]一文中描述的难以察觉的内存泄漏问题.也就是说,大多数情况下我们应该使用一个弱引用来指代一个对象,当我们真正需要访问这个对象的时候才将其转换成实际的对象.所以可以弱引用理解为一种handle,它只是底层对象表示的一层间接引用.
+
+可以考虑如下场景:
+
+我们设计了一种网络库,分为IO层和逻辑层,IO层管理实际的socket对象,而逻辑层能看到的只是socket的一个handle.逻辑层需要发送数据的时候,将handle和数据一起打包交给IO层,IO层把handle转化成实际的socket对象并完成数据发送.那么问题来了,如果在IO层收到一个发送请求时,那个handle对应的socket实际上已经销毁,那么对handle的转换就应该反映出这种情况,让转换返回一个空指针.
+
+因为在[处理由引用计数引起的泄漏]描述的算法中,`refobj *cast2refobj(ident _ident);`和`atomic_32_t refobj_dec(refobj *r);`两个方法是至关重要,并且实现相对复杂,所以本文主要目的就是介绍这两个函数的作用及其正确性.
+
+
+我们首先来看下`refobj_dex`:
+
+    atomic_32_t refobj_dec(refobj *r)
+    {
+        atomic_32_t count;
+        int c;
+        struct timespec ts;
+        assert(r->refcount > 0);
+        if((count = ATOMIC_DECREASE(&r->refcount)) == 0){
+            r->identity = 0;
+            c = 0;
+            for(;;){
+                if(COMPARE_AND_SWAP(&r->flag,0,1))
+                    break;
+                if(c < 4000){
+                    ++c;
+                    __asm__("pause");
+                }else{
+                    ts.tv_sec = 0;
+                    ts.tv_nsec = 500000;
+                    nanosleep(&ts, NULL);
+                }
+            }
+            r->destructor(r);
+        }
+        return count;
+    }
+    
+关键部分在引用计数为0,要准备销毁对象的分支.首先将对象的identity置0,然后在一个for循环中对尝试flag变量置1,只有当设置成功才会退出循环执行最后的析构函数.这里的主要迷惑之一是for循环和flag变量的作用是什么.让我们先看下`cast2refobj`的实现在回来讨论;
+
+    refobj *cast2refobj(ident _ident)
+    {
+        refobj *ptr = NULL;
+        if(!_ident.ptr) return NULL;
+        TRY{
+                  refobj *o = (refobj*)_ident.ptr;
+                  do{
+                        atomic_64_t identity = o->identity; 
+                        if(_ident.identity == identity){
+                            if(COMPARE_AND_SWAP(&o->flag,0,1)){ 
+                                identity = o->identity;
+                                if(_ident.identity == identity){                
+                                    if(refobj_inc(o) > 1)
+                                        ptr = o;
+                                    else
+                                        ATOMIC_DECREASE(&o->refcount);
+                                }
+                                o->flag = 0;
+                                break;
+                            }
+                        }else
+                            break;
+                  }while(1);
+        }CATCH_ALL{
+                ptr = NULL;      
+        }ENDTRY;
+        return ptr; 
+    }    
+
+`cast2refobj`的作用就是将一个handle转换成对象,如果对象未被销毁返回对象,否则返回NULL.在do循环中,首先判断handle保存的identity与实际对象的是否一致,如果不一致表明handle中存放的对象肯定已经不是原来的对象了,所以返回NULL.而当identity一致的时候,首先做的第一件事又是对flag置1.可见这个flag是这个算法的重点.现在我们来讨论flag的作用.
+
+flag主要由两个作用:
+
+1) 防止多个线程同时进入`cast2refobj`的核心部分,让我们考虑以下场景:
+    
+有A,B,C3个线程,A线程执行`refobj_dec`,在成功执行`if((count = ATOMIC_DECREASE(&r->refcount)) == 0){`之后,`r->identity = 0;`之前暂停.B,C则几乎同时执行`cast2refobj`,这个时候因为identity还未被清0,所以B,C看到的identity必然与其持有的handle的保持一致,如果没有`if(COMPARE_AND_SWAP(&o->flag,0,1))`这行代码我们看看会发生什么事情.假设B线程先执行, 它执行if(refobj_inc(o) > 1)的时候返回值应该是1,那么条件判断失败,没有将ptr设置为o,所以ptr依旧是NULL.但在执行完判断在准备执行另一个分支的`ATOMIC_DECREASE(&o->refcount);`之前它也被暂停,那么当C执行`if(refobj_inc(o) > 1)`它会进入`ptr=o`的分支(因为refobj_inc(o)会返回2),也就是说,转换成功,而实际上返回的却是一个正准备销毁的对象.flag就是为了防止这种情况的发生,它使得多个线程执行`cast2refobj`的时候,只能互斥的进入`if(refobj_inc(o) > 1)`.
+    
+    
+2) 让`r->destructor`延后执行,使得执行`cast2refobj`并已经进入`if(COMPARE_AND_SWAP(&o->flag,0,1)){`内部的线程先退出`cast2refobj`,然后再执行 `r->destructor`.   
+
+
+另外还要注意的是`cast2refobj`是被TRY CATCH所保护的,这样做的原因在于,在内存压力大的情况下,被销毁对象的内存可能立刻归还给系统,那么对对象的访问将会产生访问异常.我们必须捕获这个异常,同时让函数返回NULL(异常出现表明handle持有的对象必定是非法的了). 
+    
