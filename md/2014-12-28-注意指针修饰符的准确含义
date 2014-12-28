@@ -1,0 +1,148 @@
+首先从一起多线程无锁算法的事故说起,以下是一个无锁栈的实现测试,但在开-O2以上优化的情况下它却无法正常工作:
+
+	#include "lf_stack.h"
+	#include "kn_list.h"
+	#include "kn_time.h"
+	#include "kn_thread.h"
+	#include "kn_atomic.h"
+	
+	typedef struct lockfree_stack
+	{
+		volatile kn_list_node *head;
+	}lockfree_stack,*lockfree_stack_t;
+	
+	static  void lfstack_push(lockfree_stack_t ls,kn_list_node *n)
+	{
+		for( ; ;){	
+			kn_list_node *lhead = ls->head;
+			n->next = lhead;
+			if(COMPARE_AND_SWAP(&ls->head,lhead,n))//if head unchange,set n to be the new head
+				break;
+		}
+	}
+	
+	static  kn_list_node* lfstack_pop(lockfree_stack_t ls)
+	{
+		for( ; ;){	
+			kn_list_node *lhead = ls->head;
+			if(!lhead) return NULL;
+			kn_list_node *next = lhead->next;				
+			if(COMPARE_AND_SWAP(&ls->head,lhead,next))
+			{
+				lhead->next = NULL;
+				return lhead;
+			}
+		}
+	}
+	
+	
+	volatile int count = 0;
+	atomic_32_t c1 = 0;
+	atomic_32_t c2 = 0;
+	
+	struct element{
+		kn_list_node node;
+		int value;
+	};
+	
+	struct element *element_pool1;
+	struct element *element_pool2;
+	
+	lockfree_stack lf_stack;
+	
+	void *producer1(void *arg)
+	{
+		printf("producer1\n");
+		int i;
+		while(1){
+			for(i = 0; i < 10000000; ++i){
+				struct element *ele =  &element_pool1[i];
+				ATOMIC_INCREASE(&c1);
+				lfstack_push(&lf_stack,(kn_list_node*)ele);
+			}
+			while(c1 > 0){
+				FENCE();
+				kn_sleepms(0);
+			}
+		}
+		printf("producer1 end\n");
+	    	return NULL;
+	}
+	
+	void *producer2(void *arg)
+	{
+		printf("producer2\n");
+		int i;
+		while(1){
+			for(i = 0; i < 10000000; ++i){
+				struct element *ele =  &element_pool2[i];
+				ATOMIC_INCREASE(&c2);	
+				lfstack_push(&lf_stack,(kn_list_node*)ele);
+	
+			}
+			while(c2 > 0){
+				FENCE();
+				kn_sleepms(0);
+			}
+		}
+	    return NULL;
+	}
+	
+	
+	void *consumer(void *arg)
+	{
+		printf("consumer\n");
+		volatile struct element *ele;
+		uint32_t tick = 0;
+		while(1){
+			if((ele = (struct element*)lfstack_pop(&lf_stack))){
+				if(count == 0){
+					 tick = kn_systemms();
+				}
+				if(++count  == 5000000) {
+					uint32_t now = kn_systemms();
+	            				uint32_t elapse = (uint32_t)(now-tick);
+					printf("pop %d/ms\n",count/elapse*1000);
+					tick = now;
+					count = 0;				
+				}
+				if(ele->value == 1)
+					ATOMIC_DECREASE(&c1);
+				else if(ele->value == 2)
+					ATOMIC_DECREASE(&c2);
+				else
+					printf("%d\n",ele->value);	
+			}
+		}
+	    return NULL;
+	}
+	
+	int main(){
+		element_pool1 = calloc(10000000,sizeof(*element_pool1));
+		element_pool2 = calloc(10000000,sizeof(*element_pool2));
+		int i;
+		for(i = 0; i < 10000000; ++i) element_pool1[i].value = 1;
+		for(i = 0; i < 10000000; ++i) element_pool2[i].value = 2;		
+		lf_stack.head = NULL;
+		kn_thread_t t1 = kn_create_thread(THREAD_JOINABLE);
+		kn_thread_t t2 = kn_create_thread(THREAD_JOINABLE);	
+		kn_thread_t t3 = kn_create_thread(THREAD_JOINABLE);	
+		kn_thread_start_run(t1,producer1,NULL);
+		kn_thread_start_run(t2,producer2,NULL);	
+		kn_thread_start_run(t3,consumer,NULL);		
+	 	getchar();
+		return 0;
+	}
+
+
+表现就是consumer执行一定次数的pop之后死活也无法再弹出元素.不知道各位看官看出问题在哪没有.
+
+当问题再次出现以后,我用调试器上去中断,consumer线程,断点正好在这行`if(!lhead) return NULL;`,lhead为NULL,我回到上一层栈查看实际上`lockfree_stack.head`字段并不是空,当我想查看lhead的地址时,显示无法查看寄存器地址.
+
+那么问题就明确了,编译器把lhead存放在了寄存器,导致无法发现head实际已经被改变.那么问题来了,我明明将head标记为volatile的呀.
+
+
+可是再仔细看看,`volatile kn_list_node *head;`修饰符在指针之前,意思是指向的是volatile变量,而我实际要的是,一个指针它本身是volatile的.ok,做相应的调整后`kn_list_node * volatile head;`,问题解决.
+
+
+总之，对指针修饰符关键的一点就是,在`*`之前,修饰的是指向的目标.而在`*`之后才是修饰指针本身.
